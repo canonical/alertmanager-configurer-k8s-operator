@@ -5,6 +5,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Union
 
 import charms.alertmanager_k8s.v0.alertmanager_remote_configurer as remote_config_write
@@ -28,7 +29,6 @@ from ops.model import (
     WaitingStatus,
 )
 from ops.pebble import Layer
-from pathlib import Path
 
 from config_dir_watcher import (
     AlertmanagerConfigDirWatcher,

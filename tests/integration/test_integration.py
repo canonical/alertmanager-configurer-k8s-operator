@@ -54,7 +54,7 @@ class TestAlertmanagerConfigurerOperatorCharm:
         )
 
     # @pytest.mark.abort_on_fail
-    # async def test_given_alertmanager_configurer_charm_in_blocked_status_when_alertmanager_relation_created_then_charm_goes_to_active_status(  # noqa: E501
+    # async def test_given_alertmanager_configurer_charm_in_blocked_status_when_alertmanager_relation_created_then_charm_goes_to_active_status(  # noqa: E501, W505
     #     self, ops_test: OpsTest, setup
     # ):
     #     await ops_test.model.add_relation(

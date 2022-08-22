@@ -3,11 +3,10 @@
 
 import json
 import logging
-import requests
+import requests  # type: ignore[import]
 
-import jsonschema.exceptions
 import yaml
-from jsonschema import exceptions, validate    # type: ignore[import]
+from jsonschema import exceptions, validate  # type: ignore[import]
 from pathlib import Path
 
 from ops.charm import CharmBase, RelationChangedEvent, RelationJoinedEvent
@@ -1823,7 +1822,7 @@ class AlertmanagerRemoteConfigurerProvider(Object):
         remote_config_write_relation = self._charm.model.get_relation(self._relation_name)
         if remote_config_write_relation:
             try:
-                raw_config = remote_config_write_relation.data[remote_config_write_relation.app][
+                raw_config = remote_config_write_relation.data[remote_config_write_relation.app][  # type: ignore[index]  # noqa: E501
                     "alertmanager_config"
                 ]
                 if self._config_is_valid(json.loads(raw_config)):
@@ -1840,7 +1839,7 @@ class AlertmanagerRemoteConfigurerProvider(Object):
         if remote_config_write_relation:
             try:
                 templates_raw = remote_config_write_relation.data[
-                    remote_config_write_relation.app
+                    remote_config_write_relation.app  # type: ignore[index]
                 ]["alertmanager_templates"]
                 templates = json.loads(templates_raw)
             except KeyError:
@@ -1854,7 +1853,7 @@ class AlertmanagerRemoteConfigurerProvider(Object):
         try:
             validate(instance=config, schema=ALERTMANAGER_CONFIG_JSON_SCHEMA)
             return True
-        except jsonschema.exceptions.ValidationError as e:
+        except exceptions.ValidationError as e:
             logger.error(f"Config validation error: {e.message}")
             return False
 
@@ -1907,7 +1906,7 @@ class AlertmanagerRemoteConfigurerConsumer(Object):
         if not self._charm.unit.is_leader():
             return
         relation = self.model.get_relation(self._relation_name)
-        self._update_relation_databag(relation)
+        self._update_relation_databag(relation)  # type: ignore[arg-type]
 
     def _update_relation_databag(self, relation: Relation) -> None:
         try:
