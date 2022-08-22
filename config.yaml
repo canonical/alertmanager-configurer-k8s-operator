@@ -1,14 +1,16 @@
-# Copyright 2022 Canonical Ltd.
-# See LICENSE file for licensing details.
-#
-# TEMPLATE-TODO: change this example to suit your needs.
-# If you don't need a config, you can remove the file entirely.
-# It ties in to the example _on_config_changed handler in src/charm.py
-#
-# Learn more about config at: https://juju.is/docs/sdk/config
-
 options:
-  thing:
-    default: 🎁
-    description: A thing used by the charm.
+  multitenant_label:
     type: string
+    description: |
+      Alertmanager Configurer has been designed to support multiple tenants. In a multitenant 
+      Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then 
+      the routing tree is distinct for each tenant.
+    default: networkID
+  templates_file:
+    type: string
+    description: |
+      Alertmanager templates definition file content. All templates need to go into this single 
+      config option. This config option will be ignored in case templates section is defined
+      in the Alertmanager config file (in which case, user is responsible for writing templates
+      files to the container).
+    default: ""

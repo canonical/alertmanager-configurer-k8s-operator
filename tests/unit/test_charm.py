@@ -1,67 +1,395 @@
+#!/usr/bin/env python3
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
-#
-# Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import json
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, PropertyMock, call, patch
 
-from ops.model import ActiveStatus
-from ops.testing import Harness
+import yaml
+from ops import testing
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
-from charm import OperatorTemplateCharm
+from charm import AlertmanagerConfigurerOperatorCharm
+
+TEST_MULTITENANT_LABEL = "some_test_label"
+TEST_CONFIG = f"""options:
+  multitenant_label:
+    type: string
+    description: |
+      Alertmanager Configurer has been designed to support multiple tenants. In a multitenant
+      Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then
+      the routing tree is distinct for each tenant.
+    default: {TEST_MULTITENANT_LABEL}
+  templates_file:
+    type: string
+    description: |
+      Alertmanager templates definition file content. All templates need to go into this single
+      config option. This config option will be ignored in case templates section is defined
+      in the Alertmanager config file (in which case, user is responsible for writing templates
+      files to the container).
+    default: ""
+"""
+TEST_ALERTMANAGER_CONFIG_FILE = "/test/rules/dir/config_file.yml"
+TEST_ALERTMANAGER_DEFAULT_CONFIG = """route:
+  receiver: test_receiver
+  group_by:
+  - alertname
+  group_wait: 1234s
+  group_interval: 4321s
+  repeat_interval: 1111h
+receivers:
+- name: test_receiver
+    """
 
 
-class TestCharm(unittest.TestCase):
+class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
+    @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def setUp(self):
-        self.harness = Harness(OperatorTemplateCharm)
+        self.harness = testing.Harness(AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG)
         self.addCleanup(self.harness.cleanup)
+        testing.SIMULATE_CAN_CONNECT = True
+        self.harness.set_leader(True)
         self.harness.begin()
 
-    def test_config_changed(self):
-        self.assertEqual(list(self.harness.charm._stored.things), [])
-        self.harness.update_config({"thing": "foo"})
-        self.assertEqual(list(self.harness.charm._stored.things), ["foo"])
+    @patch("charm.AlertmanagerConfigDirWatcher")
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_DIR",
+        new_callable=PropertyMock,
+    )
+    def test_given_alertmanager_config_directory_when_pebble_ready_then_watchdog_starts_watching_given_alertmanager_config_directory(  # noqa: E501
+        self, patched_config_dir, patched_alertmanager_config_dir_watcher
+    ):
+        test_config_dir = "/test/rules/dir"
+        patched_config_dir.return_value = test_config_dir
+        self.harness.container_pebble_ready("alertmanager-configurer")
 
-    def test_action(self):
-        # the harness doesn't (yet!) help much with actions themselves
-        action_event = Mock(params={"fail": ""})
-        self.harness.charm._on_fortune_action(action_event)
+        patched_alertmanager_config_dir_watcher.assert_called_with(
+            self.harness.charm, test_config_dir
+        )
 
-        self.assertTrue(action_event.set_results.called)
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_not_created_when_pebble_ready_then_charm_goes_to_blocked_state(  # noqa: E501
+        self,
+    ):
+        self.harness.container_pebble_ready("alertmanager-configurer")
 
-    def test_action_fail(self):
-        action_event = Mock(params={"fail": "fail this"})
-        self.harness.charm._on_fortune_action(action_event)
+        assert self.harness.charm.unit.status == BlockedStatus(
+            "Waiting for alertmanager relation to be created"
+        )
 
-        self.assertEqual(action_event.fail.call_args, [("fail this",)])
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_created_but_alertmanager_configurer_container_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
+        self,
+    ):
+        self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        testing.SIMULATE_CAN_CONNECT = False
+        self.harness.container_pebble_ready("alertmanager-configurer")
 
-    def test_httpbin_pebble_ready(self):
-        # Check the initial Pebble plan is empty
-        initial_plan = self.harness.get_container_pebble_plan("httpbin")
-        self.assertEqual(initial_plan.to_yaml(), "{}\n")
-        # Expected plan after Pebble ready with default config
+        assert self.harness.charm.unit.status == WaitingStatus(
+            "Waiting for alertmanager-configurer container to be ready"
+        )
+
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_created_and_alertmanager_configurer_container_ready_but_dummy_http_server_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
+        self,
+    ):
+        self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.set_can_connect("dummy-http-server", True)
+        self.harness.container_pebble_ready("alertmanager-configurer")
+
+        assert self.harness.charm.unit.status == WaitingStatus(
+            "Waiting for the dummy HTTP server to be ready"
+        )
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_PORT",
+        new_callable=PropertyMock,
+    )
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.DUMMY_HTTP_SERVER_HOST",
+        new_callable=PropertyMock,
+    )
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.DUMMY_HTTP_SERVER_PORT",
+        new_callable=PropertyMock,
+    )
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_prometheus_relation_created_and_prometheus_configurer_container_ready_when_pebble_ready_then_pebble_plan_is_updated_with_correct_pebble_layer(  # noqa: E501
+        self,
+        patched_dummy_http_server_port,
+        patched_dummy_http_server_host,
+        patched_alertmanager_configurer_port,
+        patched_alertmanager_config_file,
+    ):
+        test_dummy_http_server_port = 4321
+        test_dummy_http_server_host = "testhost"
+        test_alertmanager_configurer_port = 1234
+        patched_dummy_http_server_port.return_value = test_dummy_http_server_port
+        patched_dummy_http_server_host.return_value = test_dummy_http_server_host
+        patched_alertmanager_configurer_port.return_value = test_alertmanager_configurer_port
+        patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
+        self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.set_can_connect("dummy-http-server", True)
+        self.harness.container_pebble_ready("dummy-http-server")
         expected_plan = {
             "services": {
-                "httpbin": {
+                "alertmanager-configurer": {
                     "override": "replace",
-                    "summary": "httpbin",
-                    "command": "gunicorn -b 0.0.0.0:80 httpbin:app -k gevent",
                     "startup": "enabled",
-                    "environment": {"thing": "🎁"},
+                    "command": f"alertmanager_configurer "
+                    f"-port={test_alertmanager_configurer_port} "
+                    f"-alertmanager-conf={TEST_ALERTMANAGER_CONFIG_FILE} "
+                    "-alertmanagerURL="
+                    f"{test_dummy_http_server_host}:{test_dummy_http_server_port} "
+                    f"-multitenant-label={TEST_MULTITENANT_LABEL} "
+                    "-delete-route-with-receiver=true ",
                 }
-            },
+            }
         }
-        # Get the httpbin container from the model
-        container = self.harness.model.unit.get_container("httpbin")
-        # Emit the PebbleReadyEvent carrying the httpbin container
-        self.harness.charm.on.httpbin_pebble_ready.emit(container)
-        # Get the plan now we've run PebbleReady
-        updated_plan = self.harness.get_container_pebble_plan("httpbin").to_dict()
-        # Check we've got the plan we expected
+
+        self.harness.container_pebble_ready("alertmanager-configurer")
+
+        updated_plan = self.harness.get_container_pebble_plan("alertmanager-configurer").to_dict()
         self.assertEqual(expected_plan, updated_plan)
-        # Check the service was started
-        service = self.harness.model.unit.get_container("httpbin").get_service("httpbin")
-        self.assertTrue(service.is_running())
-        # Ensure we set an ActiveStatus with no message
-        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    def test_given_dummy_http_server_container_ready_when_pebble_ready_then_pebble_plan_is_updated_with_correct_pebble_layer(  # noqa: E501
+        self,
+    ):
+        expected_plan = {
+            "services": {
+                "dummy-http-server": {
+                    "override": "replace",
+                    "startup": "enabled",
+                    "command": "nginx",
+                }
+            }
+        }
+        self.harness.container_pebble_ready("dummy-http-server")
+
+        updated_plan = self.harness.get_container_pebble_plan("dummy-http-server").to_dict()
+        self.assertEqual(expected_plan, updated_plan)
+
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_created_and_alertmanager_configurer_container_ready_when_pebble_ready_then_charm_goes_to_active_state(  # noqa: E501
+        self,
+    ):
+        self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.set_can_connect("dummy-http-server", True)
+        self.harness.container_pebble_ready("dummy-http-server")
+
+        self.harness.container_pebble_ready("alertmanager-configurer")
+
+        assert self.harness.charm.unit.status == ActiveStatus()
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_SERVICE_NAME",
+        new_callable=PropertyMock,
+    )
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_PORT",
+        new_callable=PropertyMock,
+    )
+    def test_given_alertmanager_configurer_service_when_alertmanager_configurer_relation_joined_then_alertmanager_configurer_service_name_and_port_are_pushed_to_the_relation_data_bag(  # noqa: E501
+        self, patched_alertmanager_configurer_port, patched_alertmanager_configurer_service_name
+    ):
+        test_alertmanager_configurer_service_name = "whatever"
+        test_alertmanager_configurer_port = 1234
+        patched_alertmanager_configurer_service_name.return_value = (
+            test_alertmanager_configurer_service_name
+        )
+        patched_alertmanager_configurer_port.return_value = test_alertmanager_configurer_port
+        relation_id = self.harness.add_relation(
+            "alertmanager-configurer", self.harness.charm.app.name
+        )
+        self.harness.add_relation_unit(relation_id, f"{self.harness.charm.app.name}/0")
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, f"{self.harness.charm.app.name}"),
+            {
+                "service_name": test_alertmanager_configurer_service_name,
+                "port": str(test_alertmanager_configurer_port),
+            },
+        )
+
+    @patch("ops.model.Container.push")
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_DEFAULT_CONFIG",
+        new_callable=PropertyMock,
+    )
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_doesnt_provide_alertmanager_config_when_alertmanager_relation_joined_then_alertmanager_config_is_created_in_using_default_data(  # noqa: E501
+        self, patched_alertmanager_config_file, patched_alertmanager_default_config, patched_push
+    ):
+        patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
+        patched_alertmanager_default_config.return_value = TEST_ALERTMANAGER_DEFAULT_CONFIG
+        expected_config_push_calls = [
+            call(TEST_ALERTMANAGER_CONFIG_FILE, yaml.safe_load(TEST_ALERTMANAGER_DEFAULT_CONFIG))
+        ]
+
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        patched_push.assert_has_calls(expected_config_push_calls)
+
+    @patch("ops.model.Container.push")
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_alertmanager_relation_provides_alertmanager_config_when_alertmanager_relation_joined_then_alertmanager_config_is_created_in_using_data_from_relation(  # noqa: E501
+        self, patched_alertmanager_config_file, patched_push
+    ):
+        patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
+        expected_config_push_calls = [
+            call(TEST_ALERTMANAGER_CONFIG_FILE, yaml.safe_load(TEST_ALERTMANAGER_DEFAULT_CONFIG))
+        ]
+
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.update_relation_data(
+            relation_id=relation_id,
+            app_or_unit="alertmanager-k8s",
+            key_values={"alertmanager_config": TEST_ALERTMANAGER_DEFAULT_CONFIG},
+        )
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        patched_push.assert_has_calls(expected_config_push_calls)
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_config_in_config_dir_when_alertmanager_config_file_changed_then_data_bag_is_updated_with_new_config(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_config_file = "./tests/unit/test_config/alertmanager.yml"
+        patched_alertmanager_config_file.return_value = test_config_file
+        with open(test_config_file, "r") as config_yaml:
+            expected_config = yaml.safe_load(config_yaml)
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.alertmanager_config_file_changed.emit()
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+                "alertmanager_config"
+            ],
+            json.dumps(expected_config),
+        )
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_config_file_doesnt_contain_templates_but_templates_configured_in_the_charm_when_config_changed_then_templates_from_charm_config_are_pushed_to_the_relation_data_bag(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_templates = '{{define "myTemplate"}}do something{{end}}'
+        self.harness.update_config({"templates_file": test_templates})
+        test_config_file = "./tests/unit/test_config/alertmanager.yml"
+        patched_alertmanager_config_file.return_value = test_config_file
+        expected_config = [test_templates]
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.config_changed.emit()
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+                "alertmanager_templates"
+            ],
+            json.dumps(expected_config),
+        )
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_config_file_doesnt_contain_templates_but_templates_configured_in_the_charm_when_alertmanager_config_file_changed_then_templates_from_charm_config_are_pushed_to_the_relation_data_bag(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_templates = '{{define "myTemplate"}}do something{{end}}'
+        self.harness.update_config({"templates_file": test_templates})
+        test_config_file = "./tests/unit/test_config/alertmanager.yml"
+        patched_alertmanager_config_file.return_value = test_config_file
+        expected_config = [test_templates]
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.alertmanager_config_file_changed.emit()
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+                "alertmanager_templates"
+            ],
+            json.dumps(expected_config),
+        )
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_templates_configured_in_both_config_file_and_charm_config_when_alertmanager_config_file_changed_then_templates_from_config_file_are_pushed_to_the_relation_data_bag(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_templates = '{{define "myTemplate"}}do something{{end}}'
+        self.harness.update_config({"templates_file": test_templates})
+        test_config_file = "./tests/unit/test_config/alertmanager_with_templates.yml"
+        patched_alertmanager_config_file.return_value = test_config_file
+        test_templates_file = "./tests/unit/test_config/test_templates.tmpl"
+        expected_config = []
+        with open(test_templates_file, "r") as templates_file:
+            expected_config.append(templates_file.read())
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.alertmanager_config_file_changed.emit()
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+                "alertmanager_templates"
+            ],
+            json.dumps(expected_config),
+        )
+
+    @patch(
+        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
+        new_callable=PropertyMock,
+    )
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_templates_configured_in_both_config_file_and_charm_config_when_config_changed_then_templates_from_config_file_are_pushed_to_the_relation_data_bag(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_templates = '{{define "myTemplate"}}do something{{end}}'
+        self.harness.update_config({"templates_file": test_templates})
+        test_config_file = "./tests/unit/test_config/alertmanager_with_templates.yml"
+        patched_alertmanager_config_file.return_value = test_config_file
+        test_templates_file = "./tests/unit/test_config/test_templates.tmpl"
+        expected_config = []
+        with open(test_templates_file, "r") as templates_file:
+            expected_config.append(templates_file.read())
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.config_changed.emit()
+
+        self.assertEqual(
+            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+                "alertmanager_templates"
+            ],
+            json.dumps(expected_config),
+        )
