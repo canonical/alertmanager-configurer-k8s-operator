@@ -265,9 +265,9 @@ receivers:
         Returns:
             None
         """
-        self._get_default_alertmanager_config(event)
+        self.push_default_config_to_workload(event)
 
-    def _get_default_alertmanager_config(self, event: RelationJoinedEvent) -> None:
+    def push_default_config_to_workload(self, event: RelationJoinedEvent) -> None:
         """Pushes default Alertmanager config file to the workload container. If the provider
         of the `alertmanager` relation doesn't provide Alertmanager config in the relation data
         bag, default config will be used.

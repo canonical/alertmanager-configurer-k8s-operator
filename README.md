@@ -22,13 +22,13 @@ Full description of the API is available in [github].
 The Alertmanager Configurer Charmed Operator may be deployed using the Juju command line as in:
 
 ```bash
-juju deploy alertmanager-configurer-k8s
+juju deploy alertmanager-configurer-k8s --trust
 ```
 
 ### Relating to the Alertmanager
 
 ```bash
-juju deploy alertmanager-k8s
+juju deploy alertmanager-k8s --trust
 juju relate alertmanager-configurer-k8s alertmanager-k8s:remote-configurer
 ```
 
