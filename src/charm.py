@@ -112,8 +112,6 @@ receivers:
         Returns:
             None
         """
-        watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
-        watchdog.start_watchdog()
         if not self.model.get_relation("alertmanager"):
             self.unit.status = BlockedStatus("Waiting for alertmanager relation to be created")
             event.defer()
@@ -128,6 +126,8 @@ receivers:
             self.unit.status = WaitingStatus("Waiting for the dummy HTTP server to be ready")
             event.defer()
             return
+        watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
+        watchdog.start_watchdog()
         self._start_alertmanager_configurer()
         self.unit.status = ActiveStatus()
 
