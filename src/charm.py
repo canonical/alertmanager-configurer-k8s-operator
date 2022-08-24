@@ -47,16 +47,11 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
     DUMMY_HTTP_SERVER_PORT = 80
     ALERTMANAGER_CONFIGURER_SERVICE_NAME = "alertmanager-configurer"
     ALERTMANAGER_CONFIGURER_PORT = 9101
-    ALERTMANAGER_DEFAULT_CONFIG = """route:
-  receiver: null_receiver
-  group_by:
-  - alertname
-  group_wait: 10s
-  group_interval: 10s
-  repeat_interval: 1h
-receivers:
-- name: null_receiver
-    """
+    with open(
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "alertmanager.yml"),
+        "r",
+    ) as default_yaml:
+        ALERTMANAGER_DEFAULT_CONFIG = default_yaml.read()
 
     on = AlertmanagerConfigFileChangedCharmEvents()
 
@@ -83,6 +78,7 @@ receivers:
             ],
         )
 
+        self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(
             self.on.alertmanager_configurer_pebble_ready,
             self._on_alertmanager_configurer_pebble_ready,
@@ -101,6 +97,10 @@ receivers:
             self.on.alertmanager_configurer_relation_joined,
             self._on_alertmanager_configurer_relation_joined,
         )
+
+    def _on_start(self, _):
+        watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
+        watchdog.start_watchdog()
 
     def _on_alertmanager_configurer_pebble_ready(self, event: PebbleReadyEvent) -> None:
         """Checks whether all conditions to start Alertmanager Configurer are met and, if yes,
@@ -126,8 +126,6 @@ receivers:
             self.unit.status = WaitingStatus("Waiting for the dummy HTTP server to be ready")
             event.defer()
             return
-        watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
-        watchdog.start_watchdog()
         self._start_alertmanager_configurer()
         self.unit.status = ActiveStatus()
 

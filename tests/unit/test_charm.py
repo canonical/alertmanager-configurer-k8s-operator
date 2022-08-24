@@ -62,7 +62,7 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
     ):
         test_config_dir = "/test/rules/dir"
         patched_config_dir.return_value = test_config_dir
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.charm.on.start.emit()
 
         patched_alertmanager_config_dir_watcher.assert_called_with(
             self.harness.charm, test_config_dir
