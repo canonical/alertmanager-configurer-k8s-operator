@@ -5,7 +5,7 @@ options:
       Alertmanager Configurer has been designed to support multiple tenants. In a multitenant 
       Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then 
       the routing tree is distinct for each tenant.
-    default: networkID
+    default: ""
   templates_file:
     type: string
     description: |
