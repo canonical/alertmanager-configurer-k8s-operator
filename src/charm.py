@@ -98,7 +98,12 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self._on_alertmanager_configurer_relation_joined,
         )
 
-    def _on_start(self, _):
+    def _on_start(self, _) -> None:
+        """Starts AlertmanagerConfigDirWatcher upon unit start.
+
+        Returns:
+            None
+        """
         watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
         watchdog.start_watchdog()
 
@@ -263,9 +268,9 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         Returns:
             None
         """
-        self.push_default_config_to_workload(event)
+        self._push_default_config_to_workload(event)
 
-    def push_default_config_to_workload(self, event: RelationJoinedEvent) -> None:
+    def _push_default_config_to_workload(self, event: RelationJoinedEvent) -> None:
         """Pushes default Alertmanager config file to the workload container. If the provider
         of the `alertmanager` relation doesn't provide Alertmanager config in the relation data
         bag, default config will be used.
