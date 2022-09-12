@@ -12,6 +12,8 @@ from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 from charm import AlertmanagerConfigurerOperatorCharm
 
+testing.SIMULATE_CAN_CONNECT = True
+
 TEST_MULTITENANT_LABEL = "some_test_label"
 TEST_CONFIG = f"""options:
   multitenant_label:
@@ -21,14 +23,6 @@ TEST_CONFIG = f"""options:
       Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then
       the routing tree is distinct for each tenant.
     default: {TEST_MULTITENANT_LABEL}
-  templates_file:
-    type: string
-    description: |
-      Alertmanager templates definition file content. All templates need to go into this single
-      config option. This config option will be ignored in case templates section is defined
-      in the Alertmanager config file (in which case, user is responsible for writing templates
-      files to the container).
-    default: ""
 """
 TEST_ALERTMANAGER_CONFIG_FILE = "/test/rules/dir/config_file.yml"
 TEST_ALERTMANAGER_DEFAULT_CONFIG = """route:
@@ -46,9 +40,10 @@ receivers:
 class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def setUp(self):
-        self.harness = testing.Harness(AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG)
+        self.harness = testing.Harness(
+            AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG
+        )
         self.addCleanup(self.harness.cleanup)
-        testing.SIMULATE_CAN_CONNECT = True
         self.harness.set_leader(True)
         self.harness.begin()
 
@@ -57,7 +52,8 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_DIR",
         new_callable=PropertyMock,
     )
-    def test_given_alertmanager_config_directory_when_pebble_ready_then_watchdog_starts_watching_given_alertmanager_config_directory(  # noqa: E501
+    @patch("ops.model.Container.push", Mock())
+    def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_given_alertmanager_config_directory(  # noqa: E501
         self, patched_config_dir, patched_alertmanager_config_dir_watcher
     ):
         test_config_dir = "/test/rules/dir"
@@ -134,7 +130,6 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         patched_alertmanager_configurer_port.return_value = test_alertmanager_configurer_port
         patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
         self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.set_can_connect("dummy-http-server", True)
         self.harness.container_pebble_ready("dummy-http-server")
         expected_plan = {
             "services": {
@@ -226,41 +221,16 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         new_callable=PropertyMock,
     )
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_relation_doesnt_provide_alertmanager_config_when_alertmanager_relation_joined_then_alertmanager_config_is_created_in_using_default_data(  # noqa: E501
+    def test_given_alertmanager_default_config_when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
         self, patched_alertmanager_config_file, patched_alertmanager_default_config, patched_push
     ):
         patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
         patched_alertmanager_default_config.return_value = TEST_ALERTMANAGER_DEFAULT_CONFIG
         expected_config_push_calls = [
-            call(TEST_ALERTMANAGER_CONFIG_FILE, yaml.safe_load(TEST_ALERTMANAGER_DEFAULT_CONFIG))
+            call(TEST_ALERTMANAGER_CONFIG_FILE, TEST_ALERTMANAGER_DEFAULT_CONFIG)
         ]
 
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
-
-        patched_push.assert_has_calls(expected_config_push_calls)
-
-    @patch("ops.model.Container.push")
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_relation_provides_alertmanager_config_when_alertmanager_relation_joined_then_alertmanager_config_is_created_in_using_data_from_relation(  # noqa: E501
-        self, patched_alertmanager_config_file, patched_push
-    ):
-        patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
-        expected_config_push_calls = [
-            call(TEST_ALERTMANAGER_CONFIG_FILE, yaml.safe_load(TEST_ALERTMANAGER_DEFAULT_CONFIG))
-        ]
-
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.update_relation_data(
-            relation_id=relation_id,
-            app_or_unit="alertmanager-k8s",
-            key_values={"alertmanager_config": TEST_ALERTMANAGER_DEFAULT_CONFIG},
-        )
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+        self.harness.charm.on.start.emit()
 
         patched_push.assert_has_calls(expected_config_push_calls)
 
@@ -268,128 +238,28 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
         new_callable=PropertyMock,
     )
-    @patch("ops.model.Container.push", Mock())
+    @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def test_given_alertmanager_config_in_config_dir_when_alertmanager_config_file_changed_then_data_bag_is_updated_with_new_config(  # noqa: E501
         self, patched_alertmanager_config_file
     ):
         test_config_file = "./tests/unit/test_config/alertmanager.yml"
         patched_alertmanager_config_file.return_value = test_config_file
+        harness = testing.Harness(
+            AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG
+        )
+        self.addCleanup(harness.cleanup)
+        harness.set_leader(True)
+        harness.begin()
         with open(test_config_file, "r") as config_yaml:
             expected_config = yaml.safe_load(config_yaml)
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+        relation_id = harness.add_relation("alertmanager", "alertmanager-k8s")
+        harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
 
-        self.harness.charm.on.alertmanager_config_file_changed.emit()
+        harness.charm.on.alertmanager_config_file_changed.emit()
 
         self.assertEqual(
-            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
+            harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
                 "alertmanager_config"
-            ],
-            json.dumps(expected_config),
-        )
-
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_config_file_doesnt_contain_templates_but_templates_configured_in_the_charm_when_config_changed_then_templates_from_charm_config_are_pushed_to_the_relation_data_bag(  # noqa: E501
-        self, patched_alertmanager_config_file
-    ):
-        test_templates = '{{define "myTemplate"}}do something{{end}}'
-        self.harness.update_config({"templates_file": test_templates})
-        test_config_file = "./tests/unit/test_config/alertmanager.yml"
-        patched_alertmanager_config_file.return_value = test_config_file
-        expected_config = [test_templates]
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
-
-        self.harness.charm.on.config_changed.emit()
-
-        self.assertEqual(
-            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
-                "alertmanager_templates"
-            ],
-            json.dumps(expected_config),
-        )
-
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_config_file_doesnt_contain_templates_but_templates_configured_in_the_charm_when_alertmanager_config_file_changed_then_templates_from_charm_config_are_pushed_to_the_relation_data_bag(  # noqa: E501
-        self, patched_alertmanager_config_file
-    ):
-        test_templates = '{{define "myTemplate"}}do something{{end}}'
-        self.harness.update_config({"templates_file": test_templates})
-        test_config_file = "./tests/unit/test_config/alertmanager.yml"
-        patched_alertmanager_config_file.return_value = test_config_file
-        expected_config = [test_templates]
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
-
-        self.harness.charm.on.alertmanager_config_file_changed.emit()
-
-        self.assertEqual(
-            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
-                "alertmanager_templates"
-            ],
-            json.dumps(expected_config),
-        )
-
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_templates_configured_in_both_config_file_and_charm_config_when_alertmanager_config_file_changed_then_templates_from_config_file_are_pushed_to_the_relation_data_bag(  # noqa: E501
-        self, patched_alertmanager_config_file
-    ):
-        test_templates = '{{define "myTemplate"}}do something{{end}}'
-        self.harness.update_config({"templates_file": test_templates})
-        test_config_file = "./tests/unit/test_config/alertmanager_with_templates.yml"
-        patched_alertmanager_config_file.return_value = test_config_file
-        test_templates_file = "./tests/unit/test_config/test_templates.tmpl"
-        expected_config = []
-        with open(test_templates_file, "r") as templates_file:
-            expected_config.append(templates_file.read())
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
-
-        self.harness.charm.on.alertmanager_config_file_changed.emit()
-
-        self.assertEqual(
-            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
-                "alertmanager_templates"
-            ],
-            json.dumps(expected_config),
-        )
-
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_templates_configured_in_both_config_file_and_charm_config_when_config_changed_then_templates_from_config_file_are_pushed_to_the_relation_data_bag(  # noqa: E501
-        self, patched_alertmanager_config_file
-    ):
-        test_templates = '{{define "myTemplate"}}do something{{end}}'
-        self.harness.update_config({"templates_file": test_templates})
-        test_config_file = "./tests/unit/test_config/alertmanager_with_templates.yml"
-        patched_alertmanager_config_file.return_value = test_config_file
-        test_templates_file = "./tests/unit/test_config/test_templates.tmpl"
-        expected_config = []
-        with open(test_templates_file, "r") as templates_file:
-            expected_config.append(templates_file.read())
-        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
-
-        self.harness.charm.on.config_changed.emit()
-
-        self.assertEqual(
-            self.harness.get_relation_data(relation_id, "alertmanager-configurer-k8s")[
-                "alertmanager_templates"
             ],
             json.dumps(expected_config),
         )

@@ -44,11 +44,6 @@ Alertmanager Configurer has been designed to support multiple tenants. In a mult
 Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then
 the routing tree is distinct for each tenant.
 
-Alertmanager Configurer requires initial `/etc/alertmanager/alertmanager.yml` config file
-to work properly. The `alertmanager-configurer` charm will use the config passed from 
-the `alertmanager-k8s` charm upon relating one to another. If none is provided, 
-`alertmanager-configurer` will use its own default values.
-
 ### Examples:
 
 Get tenants:

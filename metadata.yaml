@@ -25,11 +25,9 @@ containers:
 
 provides:
   alertmanager-configurer:
-    interface: alertmanager-configurer
-
-requires:
+    interface: alertmanager_configurer
   alertmanager:
-    interface: alertmanager_remote_configurer
+    interface: alertmanager_remote_configuration
 
 storage:
   config:

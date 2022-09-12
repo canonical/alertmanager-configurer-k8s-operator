@@ -6,11 +6,3 @@ options:
       Alertmanager Configurer setup, each alert is first routed on the tenancy label, and then 
       the routing tree is distinct for each tenant.
     default: ""
-  templates_file:
-    type: string
-    description: |
-      Alertmanager templates definition file content. All templates need to go into this single 
-      config option. This config option will be ignored in case templates section is defined
-      in the Alertmanager config file (in which case, user is responsible for writing templates
-      files to the container).
-    default: ""

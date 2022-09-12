@@ -2,24 +2,20 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-import json
 import logging
 import os
 from pathlib import Path
-from typing import Union
 
-import charms.alertmanager_k8s.v0.alertmanager_remote_configurer as remote_config_write
 import yaml
+from charms.alertmanager_k8s.v0.alertmanager_remote_configuration import (
+    ConfigReadError,
+    RemoteConfigurationProvider,
+)
 from charms.observability_libs.v1.kubernetes_service_patch import (
     KubernetesServicePatch,
     ServicePort,
 )
-from ops.charm import (
-    CharmBase,
-    ConfigChangedEvent,
-    PebbleReadyEvent,
-    RelationJoinedEvent,
-)
+from ops.charm import CharmBase, PebbleReadyEvent, RelationJoinedEvent
 from ops.main import main
 from ops.model import (
     ActiveStatus,
@@ -33,7 +29,6 @@ from ops.pebble import Layer
 from config_dir_watcher import (
     AlertmanagerConfigDirWatcher,
     AlertmanagerConfigFileChangedCharmEvents,
-    AlertmanagerConfigFileChangedEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class AlertmanagerConfigurerOperatorCharm(CharmBase):
     ALERTMANAGER_CONFIG_DIR = "/etc/alertmanager/"
-    ALERTMANAGER_CONFIG_FILE = os.path.join(ALERTMANAGER_CONFIG_DIR, "alertmanager.yml")
+    ALERTMANAGER_CONFIG_FILE = Path(os.path.join(ALERTMANAGER_CONFIG_DIR, "alertmanager.yml"))
     DUMMY_HTTP_SERVER_SERVICE_NAME = "dummy-http-server"
     DUMMY_HTTP_SERVER_HOST = "localhost"
     DUMMY_HTTP_SERVER_PORT = 80
@@ -77,6 +72,17 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
                 ServicePort(name="dummy-http-server", port=self.DUMMY_HTTP_SERVER_PORT),
             ],
         )
+        try:
+            self.remote_configuration_provider = RemoteConfigurationProvider.with_config_file(
+                charm=self,
+                config_file=self.ALERTMANAGER_CONFIG_FILE,
+                relation_name="alertmanager",
+            )
+        except ConfigReadError:
+            logger.warning(
+                f"Alertmanager configuration file {self.ALERTMANAGER_CONFIG_FILE} not available "
+                "yet."
+            )
 
         self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(
@@ -87,23 +93,21 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self.on.dummy_http_server_pebble_ready, self._on_dummy_http_server_pebble_ready
         )
         self.framework.observe(
-            self.on.alertmanager_relation_joined, self._on_alertmanager_relation_joined
-        )
-        self.framework.observe(self.on.config_changed, self._on_alertmanager_config_changed)
-        self.framework.observe(
-            self.on.alertmanager_config_file_changed, self._on_alertmanager_config_changed
-        )
-        self.framework.observe(
             self.on.alertmanager_configurer_relation_joined,
             self._on_alertmanager_configurer_relation_joined,
         )
+        self.framework.observe(
+            self.on.alertmanager_config_file_changed, self._on_alertmanager_config_changed
+        )
 
-    def _on_start(self, _) -> None:
-        """Starts AlertmanagerConfigDirWatcher upon unit start.
+    def _on_start(self, event) -> None:
+        """Starts AlertmanagerConfigDirWatcher and pushes default Alertmanager config to the
+        workload container upon unit start.
 
         Returns:
             None
         """
+        self._push_default_config_to_workload()
         watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
         watchdog.start_watchdog()
 
@@ -152,6 +156,23 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             )
             event.defer()
 
+    def _on_alertmanager_config_changed(self, _) -> None:
+        """Updates relation data bag with updated Alertmanager config.
+
+        Returns:
+            None
+        """
+        try:
+            relation = self.model.get_relation("alertmanager")
+            alertmanager_config = RemoteConfigurationProvider.load_config_file(
+                Path(self.ALERTMANAGER_CONFIG_FILE)
+            )
+            self.remote_configuration_provider.update_relation_data_bag(
+                alertmanager_config, relation
+            )
+        except ConfigReadError:
+            logger.warning("Error reading Alertmanager config file.")
+
     def _start_alertmanager_configurer(self) -> None:
         """Starts Alertmanager Configurer service.
 
@@ -190,107 +211,14 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self._dummy_http_server_container.restart(self._dummy_http_server_service_name)
             logger.info(f"Restarted container {self._dummy_http_server_service_name}")
 
-    def _on_alertmanager_config_changed(
-        self, event: Union[ConfigChangedEvent, AlertmanagerConfigFileChangedEvent]
-    ) -> None:
-        """Pushes configuration to Alertmanager through the relation data bag.
-
-        Args:
-            event: Juju ConfigChangedEvent or AlertmanagerConfigFileChangedEvent event
+    def _push_default_config_to_workload(self) -> None:
+        """Pushes default Alertmanager config file to the workload container.
 
         Returns:
             None
         """
-        if not self.model.unit.is_leader():
-            return
-        if not self.model.get_relation("alertmanager"):
-            self.unit.status = BlockedStatus("Waiting for alertmanager relation to be created")
-            event.defer()
-            return
-        if not self._alertmanager_config_file_exists:
-            self.unit.status = WaitingStatus(
-                "Waiting for Alertmanager config file to be available"
-            )
-            event.defer()
-            return
-        config = remote_config_write.load_config_file(self.ALERTMANAGER_CONFIG_FILE)
-        templates = self._get_templates(config)
-        self._update_alertmanager_relation_data_bag_with_new_alertmanager_config(config, templates)
-
-    def _get_templates(self, config: dict) -> list:
-        """Prepares templates data to be put in a relation data bag.
-        If the main config file contains templates section, content of the files specified in this
-        section will be concatenated. At the same time, templates section will be removed from
-        the main config, as alertmanager-k8s-operator charm doesn't tolerate it.
-        It is also possible to configure templates through the charm's templates_file config
-        option.
-        In case templates are specified in both the main config file and the charm's config, config
-        file will take precedence.
-
-        Args:
-            config: Alertmanager config
-
-        Returns:
-            list: List of templates
-        """
-        templates = []
-        if config.get("templates", []):
-            for file in config.pop("templates"):
-                try:
-                    templates.append(remote_config_write.load_templates_file(file))
-                except FileNotFoundError:
-                    continue
-        elif self.config["templates_file"]:
-            templates.append(self.config["templates_file"])
-        return templates
-
-    def _update_alertmanager_relation_data_bag_with_new_alertmanager_config(
-        self,
-        config: dict,
-        templates: list,
-    ) -> None:
-        """Updates Alertmanager config and templates inside the relation data bag.
-
-        Args:
-            config: Alertmanager config
-            templates: Alertmanager templates
-
-        Returns:
-            None
-        """
-        alertmanager_relation = self.model.get_relation("alertmanager")
-        alertmanager_relation.data[self.app]["alertmanager_config"] = json.dumps(config)  # type: ignore[union-attr]  # noqa: E501
-        alertmanager_relation.data[self.app]["alertmanager_templates"] = json.dumps(templates)  # type: ignore[union-attr]  # noqa: E501
-
-    def _on_alertmanager_relation_joined(self, event: RelationJoinedEvent) -> None:
-        """Handles actions taken when Alertmanager relation joins.
-
-        Returns:
-            None
-        """
-        self._push_default_config_to_workload(event)
-
-    def _push_default_config_to_workload(self, event: RelationJoinedEvent) -> None:
-        """Pushes default Alertmanager config file to the workload container. If the provider
-        of the `alertmanager` relation doesn't provide Alertmanager config in the relation data
-        bag, default config will be used.
-
-        Args:
-            event: Juju RelationJoinedEvent event
-
-        Returns:
-            None
-        """
-        default_alertmanager_config = self._default_config
-        try:
-            default_alertmanager_config = event.relation.data[event.relation.app][
-                "alertmanager_config"
-            ]
-        except (AttributeError, KeyError):
-            logger.warning("Alertmanager config missing from relation data - using default.")
         self._alertmanager_configurer_container.push(
-            self.ALERTMANAGER_CONFIG_FILE,
-            yaml.safe_load(default_alertmanager_config),
+            self.ALERTMANAGER_CONFIG_FILE, self._default_config
         )
 
     def _on_alertmanager_configurer_relation_joined(self, event: RelationJoinedEvent) -> None:
@@ -376,15 +304,6 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             return True
         except ModelError:
             return False
-
-    @property
-    def _alertmanager_config_file_exists(self) -> bool:
-        """Checks whether Alertmanager's config file exists.
-
-        Returns:
-            bool: True/False
-        """
-        return Path(self.ALERTMANAGER_CONFIG_FILE).is_file()
 
     @property
     def _default_config(self) -> str:

@@ -1,7 +1,5 @@
-jsonschema
 lightkube >= 0.8.1
 lightkube-models >= 1.22.0.4
 ops
 PyYAML
-requests
 watchdog
