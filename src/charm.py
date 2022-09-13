@@ -6,7 +6,6 @@ import logging
 import os
 from pathlib import Path
 
-import yaml
 from charms.alertmanager_k8s.v0.alertmanager_remote_configuration import (
     ConfigReadError,
     RemoteConfigurationProvider,

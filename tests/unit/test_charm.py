@@ -24,25 +24,15 @@ TEST_CONFIG = f"""options:
       the routing tree is distinct for each tenant.
     default: {TEST_MULTITENANT_LABEL}
 """
+with open("./tests/unit/test_config/alertmanager_default.yml", "r") as default_yaml:
+    TEST_ALERTMANAGER_DEFAULT_CONFIG = default_yaml.read()
 TEST_ALERTMANAGER_CONFIG_FILE = "/test/rules/dir/config_file.yml"
-TEST_ALERTMANAGER_DEFAULT_CONFIG = """route:
-  receiver: test_receiver
-  group_by:
-  - alertname
-  group_wait: 1234s
-  group_interval: 4321s
-  repeat_interval: 1111h
-receivers:
-- name: test_receiver
-    """
 
 
 class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def setUp(self):
-        self.harness = testing.Harness(
-            AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG
-        )
+        self.harness = testing.Harness(AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG)
         self.addCleanup(self.harness.cleanup)
         self.harness.set_leader(True)
         self.harness.begin()
@@ -244,9 +234,7 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
     ):
         test_config_file = "./tests/unit/test_config/alertmanager.yml"
         patched_alertmanager_config_file.return_value = test_config_file
-        harness = testing.Harness(
-            AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG
-        )
+        harness = testing.Harness(AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG)
         self.addCleanup(harness.cleanup)
         harness.set_leader(True)
         harness.begin()
