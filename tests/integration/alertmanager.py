@@ -56,6 +56,6 @@ class Alertmanager:
         #     "version": "0.23.0"
         #   }
         # }
-        async with requests.get(url) as response:
-            result = await response.json()
-            return result["config"]["original"] if response.status_code == 200 else ""
+        response = requests.get(url)
+        result = response.json()
+        return result["config"]["original"] if response.status_code == 200 else ""

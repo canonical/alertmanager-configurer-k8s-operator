@@ -6,7 +6,7 @@ The Alertmanager Configurer Charmed Operator provides an HTTP-based API for mana
 [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) configuration.
 
 This charm has been designed to supplement the
-[alertmanager-k8s] charm. It leverages the `alertmanager_remote_configurer` interface, provided 
+[alertmanager-k8s] charm. It leverages the `alertmanager_remote_configuration` interface, provided 
 by the [alertmanager-k8s], to send the configuration over to the Alertmanager inside the
 [Juju](https://juju.is/) relation data bag.
 
@@ -28,8 +28,8 @@ juju deploy alertmanager-configurer-k8s --trust
 ### Relating to the Alertmanager
 
 ```bash
-juju deploy alertmanager-k8s --trust
-juju relate alertmanager-configurer-k8s alertmanager-k8s:remote-configurer
+juju deploy alertmanager-k8s --channel=edge --trust
+juju relate alertmanager-configurer-k8s:alertmanager alertmanager-k8s:remote-configuration
 ```
 
 ### Configuring Alertmanager via alertmanager-configurer

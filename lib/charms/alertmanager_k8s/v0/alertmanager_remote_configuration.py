@@ -24,16 +24,14 @@ the `RemoteConfigurationRequirer`.
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional, Tuple
 
 import yaml
-from ops.charm import CharmBase, RelationJoinedEvent
+from ops.charm import CharmBase
 from ops.framework import EventBase, EventSource, Object, ObjectEvents
-from ops.model import Relation
 
 # The unique Charmhub library identifier, never change it
-LIBID = "something dummy for now"
+LIBID = "0e5a4c0ecde34c9880bb8899ac53444d"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
@@ -50,13 +48,13 @@ DEFAULT_RELATION_NAME = "remote-configuration"
 class ConfigReadError(Exception):
     """Raised if Alertmanager configuration can't be read."""
 
-    def __init__(self, config_file: Path):
+    def __init__(self, config_file: str):
         self.message = "Failed to read {}".format(config_file)
 
         super().__init__(self.message)
 
 
-def config_main_keys_are_valid(config: dict) -> bool:
+def config_main_keys_are_valid(config: Optional[dict]) -> bool:
     """Checks whether main keys in the Alertmanager's config file are valid.
 
     This method facilitates the basic sanity check of Alertmanager's configuration. It checks
@@ -344,7 +342,7 @@ class RemoteConfigurationProvider(Object):
     def with_config_file(
         cls,
         charm: CharmBase,
-        config_file: Path,
+        config_file: str,
         relation_name: str = DEFAULT_RELATION_NAME,
     ):
         """The RemoteConfigurationProvider object factory.
@@ -364,23 +362,17 @@ class RemoteConfigurationProvider(Object):
         """
         return cls(charm, cls.load_config_file(config_file), relation_name)
 
-    def _on_relation_joined(self, event: RelationJoinedEvent) -> None:
+    def _on_relation_joined(self, _) -> None:
         """Event handler for RelationJoinedEvent.
 
         Takes care of pushing Alertmanager configuration to the relation data bag.
-
-        Args:
-            event: Juju event
         """
         if not self._charm.unit.is_leader():
             return
-        if self.alertmanager_config:
-            self.update_relation_data_bag(self.alertmanager_config, event.relation)
-        else:
-            logger.warning("Alertmanager configuration not available. Ignoring...")
+        self.update_relation_data_bag(self.alertmanager_config)
 
     @staticmethod
-    def load_config_file(path: Path) -> dict:
+    def load_config_file(path: str) -> dict:
         """Reads given Alertmanager configuration file and turns it into a dictionary.
 
         Args:
@@ -399,24 +391,27 @@ class RemoteConfigurationProvider(Object):
         except (FileNotFoundError, OSError, yaml.YAMLError) as e:
             raise ConfigReadError(path) from e
 
-    def update_relation_data_bag(
-        self, alertmanager_config: dict, relation: Optional[Relation]
-    ) -> None:
+    def update_relation_data_bag(self, alertmanager_config: Optional[dict]) -> None:
         """Updates relation data bag with Alertmanager config and templates.
 
         Before updating relation data bag, basic sanity check of given configuration is done.
 
         Args:
             alertmanager_config: Alertmanager configuration dictionary.
-            relation: Juju Relation object
         """
-        config = alertmanager_config
-        templates = self._get_templates(config)
+        if not self._charm.unit.is_leader():
+            return
+        config, templates = self._prepare_relation_data(alertmanager_config)
         if config_main_keys_are_valid(config):
-            relation.data[self._charm.app]["alertmanager_config"] = json.dumps(config)  # type: ignore[union-attr]  # noqa: E501
-            relation.data[self._charm.app]["alertmanager_templates"] = json.dumps(templates)  # type: ignore[union-attr]  # noqa: E501
+            for relation in self._charm.model.relations[self._relation_name]:
+                relation.data[self._charm.app]["alertmanager_config"] = json.dumps(config)
+                relation.data[self._charm.app]["alertmanager_templates"] = json.dumps(templates)
+        else:
+            logger.warning("Invalid Alertmanager configuration. Ignoring...")
 
-    def _get_templates(self, config: dict) -> Optional[list]:
+    def _prepare_relation_data(
+            self, config: Optional[dict]
+    ) -> Tuple[Optional[dict], Optional[list]]:
         """Prepares templates data to be put in a relation data bag.
 
         If the main config file contains templates section, content of the files specified in this
@@ -430,16 +425,17 @@ class RemoteConfigurationProvider(Object):
             list: List of templates
         """
         templates = []
-        if config and config.get("templates", []):
+        if config and config.get("templates") is not None:
             for file in config.pop("templates"):
                 try:
                     templates.append(self._load_templates_file(file))
                 except FileNotFoundError:
+                    logger.warning("Template file {} not found. Skipping.".format(file))
                     continue
-        return templates
+        return config, templates
 
     @staticmethod
-    def _load_templates_file(path: Path) -> str:
+    def _load_templates_file(path: str) -> str:
         """Reads given Alertmanager templates file and returns its content in a form of a string.
 
         Args:

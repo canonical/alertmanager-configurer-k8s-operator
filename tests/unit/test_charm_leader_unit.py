@@ -12,8 +12,6 @@ from ops.model import ActiveStatus, BlockedStatus, WaitingStatus
 
 from charm import AlertmanagerConfigurerOperatorCharm
 
-testing.SIMULATE_CAN_CONNECT = True
-
 TEST_MULTITENANT_LABEL = "some_test_label"
 TEST_CONFIG = f"""options:
   multitenant_label:
@@ -27,21 +25,20 @@ TEST_CONFIG = f"""options:
 with open("./tests/unit/test_config/alertmanager_default.yml", "r") as default_yaml:
     TEST_ALERTMANAGER_DEFAULT_CONFIG = default_yaml.read()
 TEST_ALERTMANAGER_CONFIG_FILE = "/test/rules/dir/config_file.yml"
+ALERTMANAGER_CLASS = "charm.AlertmanagerConfigurerOperatorCharm"
 
 
-class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
+class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def setUp(self):
+        testing.SIMULATE_CAN_CONNECT = True
         self.harness = testing.Harness(AlertmanagerConfigurerOperatorCharm, config=TEST_CONFIG)
         self.addCleanup(self.harness.cleanup)
         self.harness.set_leader(True)
         self.harness.begin()
 
     @patch("charm.AlertmanagerConfigDirWatcher")
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_DIR",
-        new_callable=PropertyMock,
-    )
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_DIR", new_callable=PropertyMock)
     @patch("ops.model.Container.push", Mock())
     def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_given_alertmanager_config_directory(  # noqa: E501
         self, patched_config_dir, patched_alertmanager_config_dir_watcher
@@ -65,7 +62,7 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         )
 
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_relation_created_but_alertmanager_configurer_container_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
+    def test_given_alertmanager_relation_created_but_alertmanager_configurer_container_not_yet_ready_when_alertmanager_configurer_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
         self,
     ):
         self.harness.add_relation("alertmanager", "alertmanager-k8s")
@@ -77,33 +74,32 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         )
 
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_relation_created_and_alertmanager_configurer_container_ready_but_dummy_http_server_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
+    def test_given_alertmanager_relation_created_and_alertmanager_configurer_container_ready_but_dummy_http_server_not_yet_ready_when_alertmanager_configurer_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
         self,
     ):
         self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.set_can_connect("dummy-http-server", True)
         self.harness.container_pebble_ready("alertmanager-configurer")
 
         assert self.harness.charm.unit.status == WaitingStatus(
             "Waiting for the dummy HTTP server to be ready"
         )
 
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_PORT",
-        new_callable=PropertyMock,
-    )
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.DUMMY_HTTP_SERVER_HOST",
-        new_callable=PropertyMock,
-    )
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.DUMMY_HTTP_SERVER_PORT",
-        new_callable=PropertyMock,
-    )
+    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
+    def test_given_dummy_http_server_not_ready_when_dummy_http_server_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
+        self,
+    ):
+        self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        testing.SIMULATE_CAN_CONNECT = False
+        self.harness.container_pebble_ready("dummy-http-server")
+
+        assert self.harness.charm.unit.status == WaitingStatus(
+            "Waiting for dummy-http-server container to be ready"
+        )
+
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIGURER_PORT", new_callable=PropertyMock)
+    @patch(f"{ALERTMANAGER_CLASS}.DUMMY_HTTP_SERVER_HOST", new_callable=PropertyMock)
+    @patch(f"{ALERTMANAGER_CLASS}.DUMMY_HTTP_SERVER_PORT", new_callable=PropertyMock)
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
     def test_given_prometheus_relation_created_and_prometheus_configurer_container_ready_when_pebble_ready_then_pebble_plan_is_updated_with_correct_pebble_layer(  # noqa: E501
         self,
@@ -171,14 +167,8 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
 
         assert self.harness.charm.unit.status == ActiveStatus()
 
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_SERVICE_NAME",
-        new_callable=PropertyMock,
-    )
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIGURER_PORT",
-        new_callable=PropertyMock,
-    )
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIGURER_SERVICE_NAME", new_callable=PropertyMock)
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIGURER_PORT", new_callable=PropertyMock)
     def test_given_alertmanager_configurer_service_when_alertmanager_configurer_relation_joined_then_alertmanager_configurer_service_name_and_port_are_pushed_to_the_relation_data_bag(  # noqa: E501
         self, patched_alertmanager_configurer_port, patched_alertmanager_configurer_service_name
     ):
@@ -202,14 +192,8 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
         )
 
     @patch("ops.model.Container.push")
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_DEFAULT_CONFIG",
-        new_callable=PropertyMock,
-    )
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_DEFAULT_CONFIG", new_callable=PropertyMock)
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
     def test_given_alertmanager_default_config_when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
         self, patched_alertmanager_config_file, patched_alertmanager_default_config, patched_push
@@ -224,12 +208,9 @@ class TestAlertmanagerConfigurerOperatorCharm(unittest.TestCase):
 
         patched_push.assert_has_calls(expected_config_push_calls)
 
-    @patch(
-        "charm.AlertmanagerConfigurerOperatorCharm.ALERTMANAGER_CONFIG_FILE",
-        new_callable=PropertyMock,
-    )
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
-    def test_given_alertmanager_config_in_config_dir_when_alertmanager_config_file_changed_then_data_bag_is_updated_with_new_config(  # noqa: E501
+    def test_given_alertmanager_config_in_config_dir_when_alertmanager_config_file_changed_then_config_is_pushed_to_the_data_bag(  # noqa: E501
         self, patched_alertmanager_config_file
     ):
         test_config_file = "./tests/unit/test_config/alertmanager.yml"

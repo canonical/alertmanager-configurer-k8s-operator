@@ -4,7 +4,6 @@
 
 import logging
 import os
-from pathlib import Path
 
 from charms.alertmanager_k8s.v0.alertmanager_remote_configuration import (
     ConfigReadError,
@@ -23,7 +22,7 @@ from ops.model import (
     ModelError,
     WaitingStatus,
 )
-from ops.pebble import Layer
+from ops.pebble import ConnectionError, Layer
 
 from config_dir_watcher import (
     AlertmanagerConfigDirWatcher,
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 class AlertmanagerConfigurerOperatorCharm(CharmBase):
     ALERTMANAGER_CONFIG_DIR = "/etc/alertmanager/"
-    ALERTMANAGER_CONFIG_FILE = Path(os.path.join(ALERTMANAGER_CONFIG_DIR, "alertmanager.yml"))
+    ALERTMANAGER_CONFIG_FILE = os.path.join(ALERTMANAGER_CONFIG_DIR, "alertmanager.yml")
     DUMMY_HTTP_SERVER_SERVICE_NAME = "dummy-http-server"
     DUMMY_HTTP_SERVER_HOST = "localhost"
     DUMMY_HTTP_SERVER_PORT = 80
@@ -99,7 +98,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self.on.alertmanager_config_file_changed, self._on_alertmanager_config_changed
         )
 
-    def _on_start(self, event) -> None:
+    def _on_start(self, _) -> None:
         """Starts AlertmanagerConfigDirWatcher and pushes default Alertmanager config to the
         workload container upon unit start.
 
@@ -162,13 +161,10 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             None
         """
         try:
-            relation = self.model.get_relation("alertmanager")
             alertmanager_config = RemoteConfigurationProvider.load_config_file(
-                Path(self.ALERTMANAGER_CONFIG_FILE)
+                self.ALERTMANAGER_CONFIG_FILE
             )
-            self.remote_configuration_provider.update_relation_data_bag(
-                alertmanager_config, relation
-            )
+            self.remote_configuration_provider.update_relation_data_bag(alertmanager_config)
         except ConfigReadError:
             logger.warning("Error reading Alertmanager config file.")
 
@@ -226,6 +222,8 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         Returns:
             None
         """
+        if not self.unit.is_leader():
+            return
         self._add_service_info_to_relation_data_bag(event)
 
     def _add_service_info_to_relation_data_bag(self, event: RelationJoinedEvent) -> None:
@@ -301,7 +299,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         try:
             self._dummy_http_server_container.get_service(self._dummy_http_server_service_name)
             return True
-        except ModelError:
+        except (ConnectionError, ModelError):
             return False
 
     @property
