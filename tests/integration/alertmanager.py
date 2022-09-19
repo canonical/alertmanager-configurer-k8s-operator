@@ -15,10 +15,6 @@ class Alertmanager:
         """
         self.base_url = f"http://{host}:{port}"
 
-        # Set a timeout of 5 second - should be sufficient for all the checks here.
-        # The default (5 min) prolongs itests unnecessarily.
-        self.timeout = 5
-
     async def is_ready(self) -> bool:
         """Send a GET request to check readiness.
 
@@ -57,5 +53,6 @@ class Alertmanager:
         #   }
         # }
         response = requests.get(url)
+        response.raise_for_status()
         result = response.json()
-        return result["config"]["original"] if response.status_code == 200 else ""
+        return result["config"]["original"]

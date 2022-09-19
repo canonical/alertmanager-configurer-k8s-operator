@@ -4,7 +4,7 @@
 
 import json
 import unittest
-from unittest.mock import Mock, PropertyMock, call, patch
+from unittest.mock import Mock, PropertyMock, patch
 
 import yaml
 from ops import testing
@@ -36,11 +36,14 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.set_leader(True)
         self.harness.begin()
+        self.alertmanager_configurer_container_name = (
+            self.harness.charm.ALERTMANAGER_CONFIGURER_SERVICE_NAME
+        )
 
     @patch("charm.AlertmanagerConfigDirWatcher")
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_DIR", new_callable=PropertyMock)
     @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_given_alertmanager_config_directory(  # noqa: E501
+    def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_alertmanager_config_directory(  # noqa: E501
         self, patched_config_dir, patched_alertmanager_config_dir_watcher
     ):
         test_config_dir = "/test/rules/dir"
@@ -55,7 +58,7 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     def test_given_alertmanager_relation_not_created_when_pebble_ready_then_charm_goes_to_blocked_state(  # noqa: E501
         self,
     ):
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
 
         assert self.harness.charm.unit.status == BlockedStatus(
             "Waiting for alertmanager relation to be created"
@@ -67,10 +70,10 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     ):
         self.harness.add_relation("alertmanager", "alertmanager-k8s")
         testing.SIMULATE_CAN_CONNECT = False
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
 
         assert self.harness.charm.unit.status == WaitingStatus(
-            "Waiting for alertmanager-configurer container to be ready"
+            f"Waiting for {self.alertmanager_configurer_container_name} container to be ready"
         )
 
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
@@ -78,7 +81,7 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         self,
     ):
         self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
 
         assert self.harness.charm.unit.status == WaitingStatus(
             "Waiting for the dummy HTTP server to be ready"
@@ -119,10 +122,10 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         self.harness.container_pebble_ready("dummy-http-server")
         expected_plan = {
             "services": {
-                "alertmanager-configurer": {
+                f"{self.alertmanager_configurer_container_name}": {
                     "override": "replace",
                     "startup": "enabled",
-                    "command": f"alertmanager_configurer "
+                    "command": "alertmanager_configurer "
                     f"-port={test_alertmanager_configurer_port} "
                     f"-alertmanager-conf={TEST_ALERTMANAGER_CONFIG_FILE} "
                     "-alertmanagerURL="
@@ -133,9 +136,11 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
             }
         }
 
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
 
-        updated_plan = self.harness.get_container_pebble_plan("alertmanager-configurer").to_dict()
+        updated_plan = self.harness.get_container_pebble_plan(
+            self.alertmanager_configurer_container_name
+        ).to_dict()
         self.assertEqual(expected_plan, updated_plan)
 
     def test_given_dummy_http_server_container_ready_when_pebble_ready_then_pebble_plan_is_updated_with_correct_pebble_layer(  # noqa: E501
@@ -163,7 +168,7 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         self.harness.set_can_connect("dummy-http-server", True)
         self.harness.container_pebble_ready("dummy-http-server")
 
-        self.harness.container_pebble_ready("alertmanager-configurer")
+        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
 
         assert self.harness.charm.unit.status == ActiveStatus()
 
@@ -179,7 +184,7 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         )
         patched_alertmanager_configurer_port.return_value = test_alertmanager_configurer_port
         relation_id = self.harness.add_relation(
-            "alertmanager-configurer", self.harness.charm.app.name
+            self.alertmanager_configurer_container_name, self.harness.charm.app.name
         )
         self.harness.add_relation_unit(relation_id, f"{self.harness.charm.app.name}/0")
 
@@ -200,13 +205,12 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     ):
         patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
         patched_alertmanager_default_config.return_value = TEST_ALERTMANAGER_DEFAULT_CONFIG
-        expected_config_push_calls = [
-            call(TEST_ALERTMANAGER_CONFIG_FILE, TEST_ALERTMANAGER_DEFAULT_CONFIG)
-        ]
 
         self.harness.charm.on.start.emit()
 
-        patched_push.assert_has_calls(expected_config_push_calls)
+        patched_push.assert_any_call(
+            TEST_ALERTMANAGER_CONFIG_FILE, TEST_ALERTMANAGER_DEFAULT_CONFIG
+        )
 
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
