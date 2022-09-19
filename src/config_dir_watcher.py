@@ -2,7 +2,9 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-"""This module implements custom Juju event (alertmanager_config_changed) fired upon any change
+"""Alertmanager configuration dir watcher module.
+
+This module implements custom Juju event (alertmanager_config_changed) fired upon any change
 in a given directory mounted to the workload container. It is based on `watchdog`.
 In this particular case, it is used by the alertmanager-configurer-k8s-operator charm to detect
 changes of the Alertmanager's configuration. Thanks to this mechanism, Alertmanager Configurer
@@ -24,10 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 class AlertmanagerConfigFileChangedEvent(EventBase):
+    """Event emitted when Alertmanager configuration file changes."""
+
     pass
 
 
 class AlertmanagerConfigFileChangedCharmEvents(CharmEvents):
+    """Event descriptor for events emitted when Alertmanager config file changes."""
+
     alertmanager_config_file_changed = EventSource(AlertmanagerConfigFileChangedEvent)
 
 
@@ -35,6 +41,8 @@ LOG_FILE_PATH = "/var/log/alertmanager-configurer-watchdog.log"
 
 
 class AlertmanagerConfigDirWatcher(Object):
+    """Alertmanager Config Dir Watcher."""
+
     def __init__(self, charm: CharmBase, config_dir: str):
         super().__init__(charm, None)
         self._charm = charm
@@ -74,6 +82,8 @@ def dispatch(run_cmd: str, unit: str, charm_dir: str):
 
 
 class Handler(FileSystemEventHandler):
+    """Handler for changes in the watched directory."""
+
     def __init__(self, run_cmd: str, unit: str, charm_dir: str):
         self.run_cmd = run_cmd
         self.unit = unit

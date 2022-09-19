@@ -2,6 +2,8 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+"""Alertmanager Configurer Operator Charm."""
+
 import logging
 import os
 
@@ -33,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 class AlertmanagerConfigurerOperatorCharm(CharmBase):
+    """Alertmanager Configurer Operator Charm."""
+
     ALERTMANAGER_CONFIG_DIR = "/etc/alertmanager/"
     ALERTMANAGER_CONFIG_FILE = os.path.join(ALERTMANAGER_CONFIG_DIR, "alertmanager.yml")
     DUMMY_HTTP_SERVER_SERVICE_NAME = "dummy-http-server"
@@ -99,25 +103,23 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         )
 
     def _on_start(self, _) -> None:
-        """Starts AlertmanagerConfigDirWatcher and pushes default Alertmanager config to the
-        workload container upon unit start.
+        """Event handler for the start event.
 
-        Returns:
-            None
+        Starts AlertmanagerConfigDirWatcher and pushes default Alertmanager config to the
+        workload container upon unit start.
         """
         self._push_default_config_to_workload()
         watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
         watchdog.start_watchdog()
 
     def _on_alertmanager_configurer_pebble_ready(self, event: PebbleReadyEvent) -> None:
-        """Checks whether all conditions to start Alertmanager Configurer are met and, if yes,
+        """Event handler for alertmanager-configurer pebble ready event.
+
+        Checks whether all conditions to start Alertmanager Configurer are met and, if yes,
         triggers start of the alertmanager-configurer service.
 
         Args:
             event: Juju PebbleReadyEvent event
-
-        Returns:
-            None
         """
         if not self.model.get_relation("alertmanager"):
             self.unit.status = BlockedStatus("Waiting for alertmanager relation to be created")
@@ -137,14 +139,13 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         self.unit.status = ActiveStatus()
 
     def _on_dummy_http_server_pebble_ready(self, event: PebbleReadyEvent) -> None:
-        """When dummy HTTP server Pebble is ready and the container is accessible, starts the
+        """Event handler for dummy-http-server pebble ready event.
+
+        When dummy HTTP server Pebble is ready and the container is accessible, starts the
         dummy HTTP server.
 
         Args:
             event: Juju PebbleReadyEvent event
-
-        Returns:
-             None
         """
         if self._dummy_http_server_container.can_connect():
             self._start_dummy_http_server()
@@ -155,11 +156,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             event.defer()
 
     def _on_alertmanager_config_changed(self, _) -> None:
-        """Updates relation data bag with updated Alertmanager config.
-
-        Returns:
-            None
-        """
+        """Updates relation data bag with updated Alertmanager config."""
         try:
             alertmanager_config = RemoteConfigurationProvider.load_config_file(
                 self.ALERTMANAGER_CONFIG_FILE
@@ -169,11 +166,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             logger.warning("Error reading Alertmanager config file.")
 
     def _start_alertmanager_configurer(self) -> None:
-        """Starts Alertmanager Configurer service.
-
-        Returns:
-            None
-        """
+        """Starts Alertmanager Configurer service."""
         plan = self._alertmanager_configurer_container.get_plan()
         layer = self._alertmanager_configurer_layer
         if plan.services != layer.services:
@@ -189,11 +182,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             logger.info(f"Restarted container {self._alertmanager_configurer_service_name}")
 
     def _start_dummy_http_server(self) -> None:
-        """Starts dummy HTTP server service.
-
-        Returns:
-            None
-        """
+        """Starts dummy HTTP server service."""
         plan = self._dummy_http_server_container.get_plan()
         layer = self._dummy_http_server_layer
         if plan.services != layer.services:
@@ -207,31 +196,22 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             logger.info(f"Restarted container {self._dummy_http_server_service_name}")
 
     def _push_default_config_to_workload(self) -> None:
-        """Pushes default Alertmanager config file to the workload container.
-
-        Returns:
-            None
-        """
+        """Pushes default Alertmanager config file to the workload container."""
         self._alertmanager_configurer_container.push(
             self.ALERTMANAGER_CONFIG_FILE, self._default_config
         )
 
     def _on_alertmanager_configurer_relation_joined(self, event: RelationJoinedEvent) -> None:
-        """Handles actions taken when Alertmanager Configurer relation joins.
-
-        Returns:
-            None
-        """
+        """Handles actions taken when Alertmanager Configurer relation joins."""
         if not self.unit.is_leader():
             return
         self._add_service_info_to_relation_data_bag(event)
 
     def _add_service_info_to_relation_data_bag(self, event: RelationJoinedEvent) -> None:
-        """Adds information about Alertmanager Configurer service name and port to relation data
-        bag.
+        """Event handler for Alertmanager relation joined event.
 
-        Returns:
-            None
+        Adds information about Alertmanager Configurer service name and port to relation data
+        bag.
         """
         alertmanager_configurer_relation = event.relation
         alertmanager_configurer_relation.data[self.app][
