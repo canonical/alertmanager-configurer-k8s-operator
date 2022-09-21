@@ -214,6 +214,22 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
 
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
+    def test_given_non_existent_config_file_when_alertmanager_config_file_changed_then_charm_goes_to_blocked_state(  # noqa: E501
+        self, patched_alertmanager_config_file
+    ):
+        test_config_file = "whatever"
+        patched_alertmanager_config_file.return_value = test_config_file
+        relation_id = self.harness.add_relation("alertmanager", "alertmanager-k8s")
+        self.harness.add_relation_unit(relation_id, "alertmanager-k8s/0")
+
+        self.harness.charm.on.alertmanager_config_file_changed.emit()
+
+        assert self.harness.charm.unit.status == BlockedStatus(
+            "Error reading Alertmanager config file"
+        )
+
+    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
+    @patch("charm.KubernetesServicePatch", lambda charm, ports: None)
     def test_given_alertmanager_config_in_config_dir_when_alertmanager_config_file_changed_then_config_is_pushed_to_the_data_bag(  # noqa: E501
         self, patched_alertmanager_config_file
     ):

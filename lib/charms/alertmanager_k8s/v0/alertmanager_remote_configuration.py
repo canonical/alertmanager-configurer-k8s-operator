@@ -410,7 +410,7 @@ class RemoteConfigurationProvider(Object):
             logger.warning("Invalid Alertmanager configuration. Ignoring...")
 
     def _prepare_relation_data(
-            self, config: Optional[dict]
+        self, config: Optional[dict]
     ) -> Tuple[Optional[dict], Optional[list]]:
         """Prepares templates data to be put in a relation data bag.
 

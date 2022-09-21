@@ -163,7 +163,8 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             )
             self.remote_configuration_provider.update_relation_data_bag(alertmanager_config)
         except ConfigReadError:
-            logger.warning("Error reading Alertmanager config file.")
+            logger.error("Error reading Alertmanager config file.")
+            self.model.unit.status = BlockedStatus("Error reading Alertmanager config file")
 
     def _start_alertmanager_configurer(self) -> None:
         """Starts Alertmanager Configurer service."""
