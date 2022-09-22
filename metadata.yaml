@@ -1,23 +1,45 @@
 # Copyright 2022 Canonical Ltd.
 # See LICENSE file for licensing details.
 
-# For a complete list of supported options, see:
-# https://juju.is/docs/sdk/metadata-reference
-name: template-operator
+name: alertmanager-configurer-k8s
+summary: Alertmanager Configurer
 description: |
-  TEMPLATE-TODO: fill out the charm's description
-summary: |
-  TEMPLATE-TODO: fill out the charm's summary
+  The Alertmanager Configurer Charmed Operator provides an HTTP-based API for managing Alertmanager 
+  configuration.
+  
+  Juju charm in this repository has been designed to supplement the alertmanager-k8s charm. 
+  It leverages the `alertmanager_remote_configurer` interface, provided by the alertmanager-k8s,
+  to send the configuration over to the Alertmanager inside the Juju relation data bag.
+  
+  Full description of the API is available in 
+  https://github.com/facebookarchive/prometheus-configmanager/blob/main/alertmanager/docs/swagger-v1.yml.
 
-# TEMPLATE-TODO: replace with containers for your workload (delete for non-k8s)
 containers:
-  httpbin:
-    resource: httpbin-image
+  alertmanager-configurer:
+    resource: alertmanager-configurer-k8s-image
+    mounts:
+      - storage: config
+        location: /etc/alertmanager
+  dummy-http-server:
+    resource: dummy-http-server-image
 
-# TEMPLATE-TODO: each container defined above must specify an oci-image resource
+provides:
+  alertmanager-configurer:
+    interface: alertmanager_configurer
+  alertmanager:
+    interface: alertmanager_remote_configuration
+
+storage:
+  config:
+    type: filesystem
+    location: /etc/alertmanager
+
 resources:
-  httpbin-image:
+  alertmanager-configurer-k8s-image:
     type: oci-image
-    description: OCI image for httpbin (kennethreitz/httpbin)
-    # Included for simplicity in integration tests
-    upstream-source: kennethreitz/httpbin
+    description: OCI image for alertmanager-configurer
+    upstream-source: docker.io/facebookincubator/alertmanager-configurer:1.0.4
+  dummy-http-server-image:
+    type: oci-image
+    description: Container image for the dummy HTTP server
+    upstream-source: ghcr.io/canonical/200-ok:main

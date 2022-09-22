@@ -1,69 +1,68 @@
-# Contributing
+# Contributing to alertmanager-configurer-k8s-operator
 
 ## Overview
 
-This document explains the processes and practices recommended for contributing enhancements to
-this operator.
+This documents explains the processes and practices recommended for contributing enhancements
+or bug fixing to the Alertmanager Configurer Charmed Operator.
 
-<!-- TEMPLATE-TODO: Update the URL for issue creation -->
+## Setup
 
-- Generally, before developing enhancements to this charm, you should consider [opening an issue
-  ](https://github.com/canonical/operator-template/issues) explaining your use case.
-- If you would like to chat with us about your use-cases or proposed implementation, you can reach
-  us at [Canonical Mattermost public channel](https://chat.charmhub.io/charmhub/channels/charm-dev)
-  or [Discourse](https://discourse.charmhub.io/).
-- Familiarising yourself with the [Charmed Operator Framework](https://juju.is/docs/sdk) library
-  will help you a lot when working on new features or bug fixes.
-- All enhancements require review before being merged. Code review typically examines
-  - code quality
-  - test coverage
-  - user experience for Juju administrators of this charm.
-- Please help us out in ensuring easy to review branches by rebasing your pull request branch onto
-  the `main` branch. This also avoids merge commits and creates a linear Git commit history.
+A typical setup using [snaps](https://snapcraft.io/) can be found in the
+[Juju docs](https://juju.is/docs/sdk/dev-setup).
 
 ## Developing
 
-You can use the environments created by `tox` for development:
-
-```shell
-tox --notest -e unit
-source .tox/unit/bin/activate
-```
+- Prior to getting started on a pull request, we first encourage you to open an issue explaining
+  the use case or bug. This gives other contributors a chance to weigh in early in the process.
+- To author PRs you should be familiar with [juju](https://juju.is/#what-is-juju) and
+  [how operators are written](https://juju.is/docs/sdk).
+- All enhancements require review before being merged. Besides the code quality and test coverage,
+  the review will also take into account the resulting user experience for Juju administrators
+  using this charm. To be able to merge you would have to rebase onto the `main` branch. We do this
+  to avoid merge commits and to have a linear Git history.
+- We use [`tox`](https://tox.wiki/en/latest/#) to manage all virtualenvs for the development
+  lifecycle.
 
 ### Testing
+Unit tests are written with the Operator Framework [test harness] and integration tests are written
+using [pytest-operator] and [python-libjuju].
+
+The default test environments - lint, static and unit - will run if you start `tox` without
+arguments.
+
+You can also manually run a specific test environment:
 
 ```shell
-tox -e fmt           # update your code according to linting rules
-tox -e lint          # code style
-tox -e unit          # unit tests
-tox -e integration   # integration tests
-tox                  # runs 'lint' and 'unit' environments
+tox -e fmt              # update your code according to linting rules
+tox -e lint             # code style
+tox -e static           # static analysis
+tox -e unit             # unit tests
+tox -e integration      # integration tests
+```
+
+`tox` creates a virtual environment for every tox environment defined in [tox.ini](tox.ini).
+To activate a tox environment for manual testing,
+
+```shell
+source .tox/unit/bin/activate
 ```
 
 ## Build charm
 
-Build the charm in this git repository using:
+Build the charm in this git repository using
 
 ```shell
 charmcraft pack
 ```
 
-### Deploy
+which will create a `*.charm` file you can deploy with:
 
-<!-- TEMPLATE-TODO: Update the deploy command for name of charm-->
-
-```bash
-# Create a model
-juju add-model dev
-# Enable DEBUG logging
-juju model-config logging-config="<root>=INFO;unit=DEBUG"
-# Deploy the charm
-juju deploy ./template-operator_ubuntu-20.04-amd64.charm \
-    --resource httpbin-image=kennethreitz/httpbin \
+```shell
+juju deploy ./alertmanager-configurer-k8s_ubuntu-20.04-amd64.charm \
+  --resource alertmanager-configurer-image=docker.io/facebookincubator/alertmanager-configurer:1.0.4 \
+  --resource dummy-http-server-image=ghcr.io/canonical/200-ok:main
 ```
 
-## Canonical Contributor Agreement
-
-<!-- TEMPLATE-TODO: Update the description with the name of charm-->
-
-Canonical welcomes contributions to the Charmed Template Operator. Please check out our [contributor agreement](https://ubuntu.com/legal/contributors) if you're interested in contributing to the solution.
+[test harness]: https://ops.readthedocs.io/en/latest/#module-ops.testing
+[pytest-operator]: https://github.com/charmed-kubernetes/pytest-operator/blob/main/docs/reference.md
+[python-libjuju]: https://pythonlibjuju.readthedocs.io/en/latest/

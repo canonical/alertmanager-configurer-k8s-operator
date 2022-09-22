@@ -1,0 +1,9 @@
+route:
+  receiver: null_receiver
+  group_by:
+    - alertname
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+receivers:
+  - name: null_receiver
