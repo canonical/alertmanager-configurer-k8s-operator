@@ -46,6 +46,9 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_alertmanager_config_directory(  # noqa: E501
         self, patched_config_dir, patched_alertmanager_config_dir_watcher
     ):
+        self.harness.set_can_connect(
+            container=self.alertmanager_configurer_container_name, val=True
+        )
         test_config_dir = "/test/rules/dir"
         patched_config_dir.return_value = test_config_dir
         self.harness.charm.on.start.emit()
@@ -200,9 +203,12 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_DEFAULT_CONFIG", new_callable=PropertyMock)
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_default_config_when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
+    def test_given_alertmanager_default_config_and_can_connect_to_workload_container_when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
         self, patched_alertmanager_config_file, patched_alertmanager_default_config, patched_push
     ):
+        self.harness.set_can_connect(
+            container=self.alertmanager_configurer_container_name, val=True
+        )
         patched_alertmanager_config_file.return_value = TEST_ALERTMANAGER_CONFIG_FILE
         patched_alertmanager_default_config.return_value = TEST_ALERTMANAGER_DEFAULT_CONFIG
 
@@ -211,6 +217,18 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         patched_push.assert_any_call(
             TEST_ALERTMANAGER_CONFIG_FILE, TEST_ALERTMANAGER_DEFAULT_CONFIG
         )
+
+    @patch("ops.model.Container.push")
+    def test_given_alertmanager_default_config_and_cant_connect_to_workload_container_when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
+        self, patched_push
+    ):
+        self.harness.set_can_connect(
+            container=self.alertmanager_configurer_container_name, val=False
+        )
+
+        self.harness.charm.on.start.emit()
+
+        patched_push.assert_not_called()
 
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)
     @patch("charm.KubernetesServicePatch", lambda charm, ports: None)

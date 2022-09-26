@@ -102,12 +102,18 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self.on.alertmanager_config_file_changed, self._on_alertmanager_config_changed
         )
 
-    def _on_start(self, _) -> None:
+    def _on_start(self, event) -> None:
         """Event handler for the start event.
 
         Starts AlertmanagerConfigDirWatcher and pushes default Alertmanager config to the
         workload container upon unit start.
         """
+        if not self._alertmanager_configurer_container.can_connect():
+            self.unit.status = WaitingStatus(
+                "Waiting to be able to connect to alertmanager-configurer"
+            )
+            event.defer()
+            return
         self._push_default_config_to_workload()
         watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
         watchdog.start_watchdog()
