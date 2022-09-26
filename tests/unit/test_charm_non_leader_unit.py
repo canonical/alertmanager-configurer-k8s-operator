@@ -43,7 +43,7 @@ class TestAlertmanagerConfigurerOperatorCharmNonLeader(unittest.TestCase):
     @patch("charm.AlertmanagerConfigDirWatcher")
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_DIR", new_callable=PropertyMock)
     @patch("ops.model.Container.push", Mock())
-    def test_given_alertmanager_config_directory_when_start_then_watchdog_starts_watching_alertmanager_config_directory(  # noqa: E501
+    def test_given_alertmanager_config_directory_and_can_connect_to_workload_when_start_then_watchdog_starts_watching_alertmanager_config_directory(  # noqa: E501
         self, patched_config_dir, patched_alertmanager_config_dir_watcher
     ):
         self.harness.set_can_connect(
@@ -195,7 +195,7 @@ class TestAlertmanagerConfigurerOperatorCharmNonLeader(unittest.TestCase):
         )
 
     @patch("ops.model.Container.push")
-    def test_given_alertmanager_default_config_and_cant_connect_to_workload_container__when_start_then_alertmanager_config_is_created_using_default_data(  # noqa: E501
+    def test_given_alertmanager_default_config_and_cant_connect_to_workload_container_when_start_then_alertmanager_config_is_not_created(  # noqa: E501
         self, patched_push
     ):
         self.harness.set_can_connect(
