@@ -6,7 +6,9 @@
 
 import logging
 import os
+from typing import Union
 
+import yaml
 from charms.alertmanager_k8s.v0.alertmanager_remote_configuration import (
     ConfigReadError,
     RemoteConfigurationProvider,
@@ -29,6 +31,7 @@ from ops.pebble import ConnectionError, Layer
 from config_dir_watcher import (
     AlertmanagerConfigDirWatcher,
     AlertmanagerConfigFileChangedCharmEvents,
+    AlertmanagerConfigFileChangedEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,22 +77,16 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
                 ServicePort(name="dummy-http-server", port=self.DUMMY_HTTP_SERVER_PORT),
             ],
         )
-        try:
-            self.remote_configuration_provider = RemoteConfigurationProvider.with_config_file(
-                charm=self,
-                config_file=self.ALERTMANAGER_CONFIG_FILE,
-                relation_name="alertmanager",
-            )
-        except ConfigReadError:
-            logger.warning(
-                f"Alertmanager configuration file {self.ALERTMANAGER_CONFIG_FILE} not available "
-                "yet."
-            )
+        self.remote_configuration_provider = RemoteConfigurationProvider(
+            charm=self,
+            alertmanager_config=yaml.safe_load(self.ALERTMANAGER_DEFAULT_CONFIG),
+            relation_name="alertmanager",
+        )
 
         self.framework.observe(self.on.start, self._on_start)
         self.framework.observe(
             self.on.alertmanager_configurer_pebble_ready,
-            self._on_alertmanager_configurer_pebble_ready,
+            self._start_alertmanager_configurer,
         )
         self.framework.observe(
             self.on.dummy_http_server_pebble_ready, self._on_dummy_http_server_pebble_ready
@@ -100,6 +97,10 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         )
         self.framework.observe(
             self.on.alertmanager_config_file_changed, self._on_alertmanager_config_changed
+        )
+        self.framework.observe(
+            self.remote_configuration_provider.on.configuration_broken,
+            self._on_configuration_broken,
         )
 
     def _on_start(self, event) -> None:
@@ -118,14 +119,16 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         watchdog = AlertmanagerConfigDirWatcher(self, self.ALERTMANAGER_CONFIG_DIR)
         watchdog.start_watchdog()
 
-    def _on_alertmanager_configurer_pebble_ready(self, event: PebbleReadyEvent) -> None:
-        """Event handler for alertmanager-configurer pebble ready event.
+    def _start_alertmanager_configurer(
+        self, event: Union[AlertmanagerConfigFileChangedEvent, PebbleReadyEvent]
+    ) -> None:
+        """Event handler for AlertmanagerConfigFileChangedEvent and PebbleReadyEvent Juju events.
 
         Checks whether all conditions to start Alertmanager Configurer are met and, if yes,
         triggers start of the alertmanager-configurer service.
 
         Args:
-            event: Juju PebbleReadyEvent event
+            event (AlertmanagerConfigFileChangedEvent, PebbleReadyEvent): Juju event
         """
         if not self.model.get_relation("alertmanager"):
             self.unit.status = BlockedStatus("Waiting for alertmanager relation to be created")
@@ -141,7 +144,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             self.unit.status = WaitingStatus("Waiting for the dummy HTTP server to be ready")
             event.defer()
             return
-        self._start_alertmanager_configurer()
+        self._start_alertmanager_configurer_service()
         self.unit.status = ActiveStatus()
 
     def _on_dummy_http_server_pebble_ready(self, event: PebbleReadyEvent) -> None:
@@ -161,18 +164,26 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
             )
             event.defer()
 
-    def _on_alertmanager_config_changed(self, _) -> None:
+    def _on_alertmanager_config_changed(self, event: AlertmanagerConfigFileChangedEvent) -> None:
         """Updates relation data bag with updated Alertmanager config."""
         try:
             alertmanager_config = RemoteConfigurationProvider.load_config_file(
                 self.ALERTMANAGER_CONFIG_FILE
             )
+            self._start_alertmanager_configurer(event)
             self.remote_configuration_provider.update_relation_data_bag(alertmanager_config)
         except ConfigReadError:
             logger.error("Error reading Alertmanager config file.")
             self.model.unit.status = BlockedStatus("Error reading Alertmanager config file")
 
-    def _start_alertmanager_configurer(self) -> None:
+    def _on_configuration_broken(self, _) -> None:
+        """Event handler for `configuration_broken` event.
+
+        Puts the charm in `Blocked` status to indicate that the provided config is invalid.
+        """
+        self.model.unit.status = BlockedStatus("Invalid Alertmanager configuration")
+
+    def _start_alertmanager_configurer_service(self) -> None:
         """Starts Alertmanager Configurer service."""
         plan = self._alertmanager_configurer_container.get_plan()
         layer = self._alertmanager_configurer_layer
