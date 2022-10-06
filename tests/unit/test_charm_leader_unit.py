@@ -175,16 +175,11 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
 
         assert self.harness.charm.unit.status == ActiveStatus()
 
-    @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIGURER_SERVICE_NAME", new_callable=PropertyMock)
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIGURER_PORT", new_callable=PropertyMock)
     def test_given_alertmanager_configurer_service_when_alertmanager_configurer_relation_joined_then_alertmanager_configurer_service_name_and_port_are_pushed_to_the_relation_data_bag(  # noqa: E501
-        self, patched_alertmanager_configurer_port, patched_alertmanager_configurer_service_name
+        self, patched_alertmanager_configurer_port
     ):
-        test_alertmanager_configurer_service_name = "whatever"
         test_alertmanager_configurer_port = 1234
-        patched_alertmanager_configurer_service_name.return_value = (
-            test_alertmanager_configurer_service_name
-        )
         patched_alertmanager_configurer_port.return_value = test_alertmanager_configurer_port
         relation_id = self.harness.add_relation(
             self.alertmanager_configurer_container_name, self.harness.charm.app.name
@@ -194,7 +189,7 @@ class TestAlertmanagerConfigurerOperatorCharmLeader(unittest.TestCase):
         self.assertEqual(
             self.harness.get_relation_data(relation_id, f"{self.harness.charm.app.name}"),
             {
-                "service_name": test_alertmanager_configurer_service_name,
+                "service_name": self.harness.charm.app.name,
                 "port": str(test_alertmanager_configurer_port),
             },
         )
