@@ -232,9 +232,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
         bag.
         """
         alertmanager_configurer_relation = event.relation
-        alertmanager_configurer_relation.data[self.app][
-            "service_name"
-        ] = self.ALERTMANAGER_CONFIGURER_SERVICE_NAME
+        alertmanager_configurer_relation.data[self.app]["service_name"] = self.app.name
         alertmanager_configurer_relation.data[self.app]["port"] = str(
             self.ALERTMANAGER_CONFIGURER_PORT
         )
