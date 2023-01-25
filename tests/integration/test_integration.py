@@ -47,6 +47,7 @@ class TestAlertmanagerConfigurerOperatorCharm:
             resources=resources,
             application_name=ALERTMANAGER_CONFIGURER_APP_NAME,
             trust=True,
+            series="focal",
         )
 
     @pytest.mark.abort_on_fail
@@ -190,8 +191,9 @@ class TestAlertmanagerConfigurerOperatorCharm:
         await ops_test.model.deploy(
             ALERTMANAGER_APP_NAME,
             application_name=ALERTMANAGER_APP_NAME,
-            channel="edge",
+            channel="stable",
             trust=True,
+            series="focal"
         )
 
 
