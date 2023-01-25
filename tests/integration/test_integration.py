@@ -193,7 +193,7 @@ class TestAlertmanagerConfigurerOperatorCharm:
             application_name=ALERTMANAGER_APP_NAME,
             channel="stable",
             trust=True,
-            series="focal"
+            series="focal",
         )
 
 
