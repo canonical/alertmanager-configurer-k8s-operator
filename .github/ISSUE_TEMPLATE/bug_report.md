@@ -28,7 +28,7 @@ If applicable, add logs to help explain your problem.
 
 **Environment**
  - alertmanager-configurer version [e.g. 1.0.4]
- - Juju version: [e.g. 2.9.23]
+ - Juju version: [e.g. 3.1.0]
  - Cloud Environment [e.g. GKE]
  - Kubernetes version [e.g. 1.22]
 
