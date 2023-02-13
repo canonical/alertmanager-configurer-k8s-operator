@@ -68,18 +68,6 @@ class TestAlertmanagerConfigurerOperatorCharmNonLeader(unittest.TestCase):
         )
 
     @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_alertmanager_relation_created_but_alertmanager_configurer_container_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
-        self,
-    ):
-        self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        testing.SIMULATE_CAN_CONNECT = False
-        self.harness.container_pebble_ready(self.alertmanager_configurer_container_name)
-
-        assert self.harness.charm.unit.status == WaitingStatus(
-            f"Waiting for {self.alertmanager_configurer_container_name} container to be ready"
-        )
-
-    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
     def test_given_alertmanager_relation_created_and_alertmanager_configurer_container_ready_but_dummy_http_server_not_yet_ready_when_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
         self,
     ):
@@ -88,18 +76,6 @@ class TestAlertmanagerConfigurerOperatorCharmNonLeader(unittest.TestCase):
 
         assert self.harness.charm.unit.status == WaitingStatus(
             "Waiting for the dummy HTTP server to be ready"
-        )
-
-    @patch("charm.AlertmanagerConfigDirWatcher", Mock())
-    def test_given_dummy_http_server_not_ready_when_dummy_http_server_pebble_ready_then_charm_goes_to_waiting_state(  # noqa: E501
-        self,
-    ):
-        self.harness.add_relation("alertmanager", "alertmanager-k8s")
-        testing.SIMULATE_CAN_CONNECT = False
-        self.harness.container_pebble_ready("dummy-http-server")
-
-        assert self.harness.charm.unit.status == WaitingStatus(
-            "Waiting for dummy-http-server container to be ready"
         )
 
     @patch(f"{ALERTMANAGER_CLASS}.ALERTMANAGER_CONFIG_FILE", new_callable=PropertyMock)

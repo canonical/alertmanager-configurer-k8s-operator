@@ -63,7 +63,7 @@ class AlertmanagerConfigDirWatcher(Object):
                 "/usr/bin/python3",
                 "src/config_dir_watcher.py",
                 self._config_dir,
-                "/usr/bin/juju-run",
+                "/usr/bin/juju-exec",
                 self._charm.unit.name,
                 self._charm.charm_dir,
             ],

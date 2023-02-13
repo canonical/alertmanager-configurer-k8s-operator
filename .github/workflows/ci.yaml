@@ -1,9 +1,12 @@
 name: CI
 
 on:
+  push:
   pull_request:
     branches:
       - main
+  schedule:
+    - cron: '0 0 * * *'
 
 jobs:
   static-analysis:
@@ -37,7 +40,7 @@ jobs:
         run: tox -e unit
 
   integration-test:
-    name: Integration tests (microk8s)
+    name: Integration tests
     runs-on: ubuntu-20.04
     steps:
       - name: Checkout
@@ -46,6 +49,8 @@ jobs:
         uses: charmed-kubernetes/actions-operator@main
         with:
           provider: microk8s
+          channel: 1.26-strict/stable
+          juju-channel: 3.1/stable
       - name: Run integration tests
         run: tox -e integration
       - name: Archive charmcraft logs
