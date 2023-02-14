@@ -24,7 +24,7 @@ jobs:
       - name: Check libraries
         uses: canonical/charming-actions/check-libraries@2.2.2
         with:
-          credentials: "${{ secrets.CHARMCRAFT_AUTH }}"
+          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Select charmhub channel
@@ -34,7 +34,7 @@ jobs:
       - name: Upload charm to charmhub
         uses: canonical/charming-actions/upload-charm@2.2.2
         with:
-          credentials: "${{ secrets.CHARMCRAFT_AUTH }}"
+          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
           channel: "${{ steps.channel.outputs.name }}"
 
