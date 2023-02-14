@@ -59,11 +59,11 @@ class AlertmanagerConfigDirWatcher(Object):
             new_env.pop("JUJU_CONTEXT_ID")
 
         pid = subprocess.Popen(
-            [
+            args=[
                 "/usr/bin/python3",
                 "src/config_dir_watcher.py",
                 self._config_dir,
-                "/usr/bin/juju-run",
+                "/usr/bin/juju-exec",
                 self._charm.unit.name,
                 self._charm.charm_dir,
             ],
