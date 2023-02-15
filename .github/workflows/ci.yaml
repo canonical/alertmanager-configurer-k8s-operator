@@ -41,7 +41,7 @@ jobs:
 
   integration-test:
     name: Integration tests
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -58,4 +58,4 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: charmcraft-logs
-          path: /home/runner/snap/charmcraft/common/cache/charmcraft/log/*.log
+          path: /home/ubuntu/.local/state/charmcraft/log/*.log
