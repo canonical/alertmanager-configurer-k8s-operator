@@ -166,10 +166,10 @@ class TestAlertmanagerConfigurerOperatorCharm:
 
     @pytest.mark.abort_on_fail
     async def test_scale_up(self, ops_test: OpsTest, setup):
-        await ops_test.model.applications[ALERTMANAGER_APP_NAME].scale(2)
+        await ops_test.model.applications[ALERTMANAGER_CONFIGURER_APP_NAME].scale(2)
 
         await ops_test.model.wait_for_idle(
-            apps=[ALERTMANAGER_APP_NAME],
+            apps=[ALERTMANAGER_CONFIGURER_APP_NAME],
             status="active",
             timeout=WAIT_FOR_STATUS_TIMEOUT,
             wait_for_exact_units=2,
@@ -177,12 +177,12 @@ class TestAlertmanagerConfigurerOperatorCharm:
 
     @pytest.mark.xfail(reason="Bug in Juju: https://bugs.launchpad.net/juju/+bug/1977582")
     async def test_scale_down(self, ops_test: OpsTest, setup):
-        await ops_test.model.applications[ALERTMANAGER_APP_NAME].scale(1)
+        await ops_test.model.applications[ALERTMANAGER_CONFIGURER_APP_NAME].scale(1)
 
         await ops_test.model.wait_for_idle(
-            apps=[ALERTMANAGER_APP_NAME],
+            apps=[ALERTMANAGER_CONFIGURER_APP_NAME],
             status="active",
-            timeout=WAIT_FOR_STATUS_TIMEOUT,
+            timeout=60,
             wait_for_exact_units=1,
         )
 
