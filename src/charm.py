@@ -258,7 +258,7 @@ class AlertmanagerConfigurerOperatorCharm(CharmBase):
                         "-alertmanagerURL="
                         f"{self.DUMMY_HTTP_SERVER_HOST}:{self.DUMMY_HTTP_SERVER_PORT} "
                         f'-multitenant-label={self.model.config.get("multitenant_label")} '
-                        "-delete-route-with-receiver=true ",
+                        "-delete-route-with-receiver=true",
                     }
                 },
             }
