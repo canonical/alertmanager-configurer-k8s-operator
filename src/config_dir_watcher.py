@@ -93,7 +93,7 @@ class Handler(FileSystemEventHandler):
         self.unit = unit
         self.charm_dir = charm_dir
 
-    def on_any_event(self, event):
+    def on_closed(self, event):
         """Watchdog's callback ran on any change in the watched directory."""
         dispatch(self.run_cmd, self.unit, self.charm_dir)
 
