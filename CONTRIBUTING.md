@@ -58,7 +58,7 @@ charmcraft pack
 which will create a `*.charm` file you can deploy with:
 
 ```shell
-juju deploy ./alertmanager-configurer-k8s_ubuntu-20.04-amd64.charm \
+juju deploy ./alertmanager-configurer-k8s_ubuntu-22.04-amd64.charm \
   --resource alertmanager-configurer-image=docker.io/facebookincubator/alertmanager-configurer:1.0.4 \
   --resource dummy-http-server-image=ghcr.io/canonical/200-ok:main
 ```

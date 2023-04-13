@@ -172,6 +172,7 @@ class TestAlertmanagerConfigurerOperatorCharm:
             apps=[ALERTMANAGER_CONFIGURER_APP_NAME],
             status="active",
             timeout=WAIT_FOR_STATUS_TIMEOUT,
+            idle_period=5,
             wait_for_exact_units=2,
         )
 
