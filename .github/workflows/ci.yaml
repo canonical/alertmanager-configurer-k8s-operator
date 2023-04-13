@@ -2,9 +2,6 @@ name: CI
 
 on:
   push:
-  pull_request:
-    branches:
-      - main
   schedule:
     - cron: '0 0 * * *'
 
@@ -53,6 +50,13 @@ jobs:
           juju-channel: 3.1/stable
       - name: Run integration tests
         run: tox -e integration
+      - name: Archive Tested Charm
+        uses: actions/upload-artifact@v3
+        if: ${{ github.ref_name == 'main' }}
+        with:
+          name: tested-charm
+          path: .tox/**/alertmanager-configurer-k8s_ubuntu-22.04-amd64.charm
+          retention-days: 5
       - name: Archive charmcraft logs
         if: failure()
         uses: actions/upload-artifact@v3
@@ -65,3 +69,29 @@ jobs:
         with:
           name: juju-crashdump
           path: juju-crashdump-*.tar.xz
+
+  publish-charm:
+    name: Publish Charm
+    needs: integration-test
+    runs-on: ubuntu-22.04
+    if: ${{ github.ref_name == 'main' && github.event.schedule != ''}}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install charmcraft
+        run: sudo snap install charmcraft --classic
+      - name: Fetch Tested Charm
+        uses: actions/download-artifact@v3
+        with:
+          name: tested-charm
+      - name: Move charm in current directory
+        run: find ./ -name alertmanager-configurer-k8s_ubuntu-22.04-amd64.charm -exec mv -t ./ {} \;
+      - name: Select Charmhub channel
+        uses: canonical/charming-actions/channel@2.2.2
+        id: channel
+      - name: Upload charm to Charmhub
+        uses: canonical/charming-actions/upload-charm@2.2.2
+        with:
+          credentials: "${{ secrets.CHARMHUB_TOKEN }}"
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          channel: "${{ steps.channel.outputs.name }}"
