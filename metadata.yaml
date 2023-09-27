@@ -2,17 +2,22 @@
 # See LICENSE file for licensing details.
 
 name: alertmanager-configurer-k8s
-summary: Alertmanager Configurer
+display-name: Alertmanager Configurer
+summary: |
+  Provides an HTTP-based API for managing Alertmanager configuration.
 description: |
-  The Alertmanager Configurer Charmed Operator provides an HTTP-based API for managing Alertmanager 
+  The Alertmanager Configurer Charmed Operator provides an HTTP-based API for managing Alertmanager
   configuration.
-  
-  Juju charm in this repository has been designed to supplement the alertmanager-k8s charm. 
-  It leverages the `alertmanager_remote_configurer` interface, provided by the alertmanager-k8s,
+
+  The Juju charm in this repository has been designed to supplement the alertmanager-k8s charm.
+  It leverages the alertmanager_remote_configurer interface, provided by the alertmanager-k8s,
   to send the configuration over to the Alertmanager inside the Juju relation data bag.
-  
-  Full description of the API is available in 
+
+  The full description of the API is available at
   https://github.com/facebookarchive/prometheus-configmanager/blob/main/alertmanager/docs/swagger-v1.yml.
+website: https://charmhub.io/alertmanager-configurer-k8s
+source: https://github.com/canonical/alertmanager-configurer-k8s-operator
+issues: https://github.com/canonical/alertmanager-configurer-k8s-operator/issues
 
 containers:
   alertmanager-configurer:
