@@ -87,10 +87,10 @@ jobs:
       - name: Move charm in current directory
         run: find ./ -name alertmanager-configurer-k8s_ubuntu-22.04-amd64.charm -exec mv -t ./ {} \;
       - name: Select Charmhub channel
-        uses: canonical/charming-actions/channel@2.2.5
+        uses: canonical/charming-actions/channel@2.4.0
         id: channel
       - name: Upload charm to Charmhub
-        uses: canonical/charming-actions/upload-charm@2.2.5
+        uses: canonical/charming-actions/upload-charm@2.4.0
         with:
           credentials: "${{ secrets.CHARMHUB_TOKEN }}"
           github-token: "${{ secrets.GITHUB_TOKEN }}"
